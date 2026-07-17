@@ -1,0 +1,23 @@
+# SQLite veritabani
+*.db
+*.db-journal
+
+# Log dosyalari
+*.log
+
+# Gecici Chrome profili
+chrome_profile/
+
+# Python derleme dosyalari
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE ve editor ayarlari
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp

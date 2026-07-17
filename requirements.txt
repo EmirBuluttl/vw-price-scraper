@@ -1,0 +1,2 @@
+playwright
+# sqlite3 Python'a built-in gelir, kurulum gerekmez
