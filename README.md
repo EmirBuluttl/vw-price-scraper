@@ -1,6 +1,6 @@
-# 🚗 Volkswagen Türkiye - Fiyat Takip Otomasyonu (Scraper)
+# 🚗 Araç Sitesi - Fiyat Takip Otomasyonu (Scraper)
 
-Bu proje, Volkswagen Türkiye'nin resmi distribütörü Doğuş Oto'nun iç API Gateway altyapısını kullanarak, sıfır araç stoklarını ve donanım bazlı güncel fiyat listelerini otomatik olarak çeken, bir SQLite veritabanında saklayan ve Windows Görev Zamanlayıcı (Task Scheduler) ile günlük olarak kendini güncelleyen bir otomasyon sistemidir.
+Bu proje, iç API Gateway altyapısını kullanarak, sıfır araç stoklarını ve donanım bazlı güncel fiyat listelerini otomatik olarak çeken, bir SQLite veritabanında saklayan ve Windows Görev Zamanlayıcı (Task Scheduler) ile günlük olarak kendini güncelleyen bir otomasyon sistemidir.
 
 ---
 
@@ -18,7 +18,7 @@ Bu proje, Volkswagen Türkiye'nin resmi distribütörü Doğuş Oto'nun iç API 
 ## 🏗️ Sistem Mimarisi
 
 ```
-[Dogus Oto API Gateway] 
+[API Gateway] 
         │
         ▼ (requests.post - JSON Payload)
    [scraper.py] 
@@ -35,7 +35,7 @@ Projenin çalışabilmesi için bilgisayarınızda **Python 3.x** kurulu olmalı
 
 ### 1. Depoyu Klonlayın
 ```bash
-git clone https://github.com/KULLANICI_ADINIZ/vw-price-scraper.git
+git clone https://github.com/EmirBuluttl/vw-price-scraper.git
 cd vw-price-scraper
 ```
 
@@ -111,4 +111,4 @@ Projenin her gün otomatik olarak arka planda çalışıp fiyatları veritabanı
 
 ## 📝 Lisans
 
-Bu proje kişisel araştırma ve eğitim amacıyla geliştirilmiştir. Verilerin ticari amaçla kullanımı Doğuş Otomotiv lisans koşullarına tabidir.
+Bu proje kişisel araştırma ve eğitim amacıyla geliştirilmiştir. Verilerin ticari amaçla kullanımı lisans koşullarına tabidir.
