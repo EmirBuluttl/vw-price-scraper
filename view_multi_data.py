@@ -158,6 +158,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Çoklu marka fiyat veritabanı görüntüleyici")
     parser.add_argument("--brand",   help="Marka filtresi (örn: renault, ford, vw)")
     parser.add_argument("--all",     action="store_true", help="Tüm geçmiş kayıtlar")
+    parser.add_argument("--today",   action="store_true", help="Bugünkü kayıtlar (Varsayılan)")
     parser.add_argument("--history", action="store_true", help="Fiyat geçmişi")
     parser.add_argument("--logs",    action="store_true", help="Çalışma logları")
     parser.add_argument("--summary", action="store_true", help="Marka özet tablosu")
@@ -173,6 +174,7 @@ def main() -> None:
     elif args.logs:
         show_logs(conn, args.brand)
     else:
+        # Default or explicit --today
         show_today(conn, args.brand)
     conn.close()
 
