@@ -1,2 +1,16 @@
-playwright
-# sqlite3 Python'a built-in gelir, kurulum gerekmez
+# ─── Çoklu Marka Araç Fiyat Scraper — Bağımlılıklar ───────────────────────────
+#
+# Kurulum: pip install -r requirements.txt
+#
+# Not: sqlite3 Python'a built-in gelir, ayrıca kurulum gerekmez.
+
+# HTTP istekleri (birincil yöntem — requests ile SSR/API)
+requests>=2.31.0
+
+# HTML parse (BeautifulSoup)
+beautifulsoup4>=4.12.0
+lxml>=5.0.0          # Daha hızlı parser (bs4 için)
+
+# JavaScript gerektiren sitelerde son çare headless browser
+# (Şu an aktif değil; gelecekte entegre edilebilir)
+# playwright>=1.44.0
