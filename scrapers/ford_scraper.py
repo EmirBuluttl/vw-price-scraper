@@ -22,10 +22,23 @@ class FordScraper(BaseScraper):
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("api_binek", lambda: self._fetch_api("Binek")),
-            ("api_ticari", lambda: self._fetch_api("Ticari")),
-            ("api_fordstore", lambda: self._fetch_api("FordStore")),
+            ("api_all", self._fetch_all_categories),
         ]
+
+    def _fetch_all_categories(self) -> list[dict]:
+        all_records = []
+        seen = set()
+        for cat in ["Binek", "Ticari", "FordStore"]:
+            try:
+                recs = self._fetch_api(cat)
+                for r in recs:
+                    key = (r["model_name"], r["variant"])
+                    if key not in seen:
+                        seen.add(key)
+                        all_records.append(r)
+            except Exception as e:
+                log.warning("Ford category %s failed: %s", cat, e)
+        return all_records
 
     def _fetch_api(self, car_type: str) -> list[dict]:
         headers = {
