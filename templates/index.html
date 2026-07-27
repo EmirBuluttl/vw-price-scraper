@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Araç Fiyat Takip & Otomasyon Dashboard{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <!-- Top Navbar / Header -->
+    <header class="navbar glass-panel">
+        <div class="navbar-brand">
+            <div class="logo-icon">
+                <i class="fa-solid fa-car"></i>
+            </div>
+            <div class="brand-text">
+                <h1>Araç Fiyat Takip <span class="badge-live">Canlı Veri</span></h1>
+                <p>8 Marka Donanım & Fiyat Otomasyon Sistemi</p>
+            </div>
+        </div>
+
+        <div class="navbar-actions">
+            <button id="btn-trigger-scrape" class="btn btn-accent">
+                <i class="fa-solid fa-arrows-rotate"></i> <span>Taramayı Başlat</span>
+            </button>
+
+            <a href="{{ url_for('api_export') }}" class="btn btn-outline" title="Excel / CSV Olarak İndir">
+                <i class="fa-solid fa-file-csv"></i> <span>CSV İndir</span>
+            </a>
+
+            <a href="{{ url_for('logout') }}" class="btn btn-icon-only" title="Çıkış Yap">
+                <i class="fa-solid fa-power-off"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Stats Overview Cards -->
+    <section class="stats-grid">
+        <div class="stat-card glass-panel">
+            <div class="stat-icon icon-blue"><i class="fa-solid fa-car-side"></i></div>
+            <div class="stat-data">
+                <span class="stat-value" id="stat-total-models">-</span>
+                <span class="stat-label">Toplam Donanım / Model</span>
+            </div>
+        </div>
+
+        <div class="stat-card glass-panel">
+            <div class="stat-icon icon-purple"><i class="fa-solid fa-tags"></i></div>
+            <div class="stat-data">
+                <span class="stat-value" id="stat-brands-cnt">8</span>
+                <span class="stat-label">Aktif Marka (VW, Ford, Hyundai, ...)</span>
+            </div>
+        </div>
+
+        <div class="stat-card glass-panel highlight-new-model">
+            <div class="stat-icon icon-gold"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            <div class="stat-data">
+                <span class="stat-value" id="stat-new-models">0</span>
+                <span class="stat-label">✨ Yeni Modeller</span>
+            </div>
+        </div>
+
+        <div class="stat-card glass-panel highlight-new-variant">
+            <div class="stat-icon icon-emerald"><i class="fa-solid fa-star"></i></div>
+            <div class="stat-data">
+                <span class="stat-value" id="stat-new-variants">0</span>
+                <span class="stat-label">🏷️ Yeni Donanım Paketleri</span>
+            </div>
+        </div>
+
+        <div class="stat-card glass-panel">
+            <div class="stat-icon icon-coral"><i class="fa-solid fa-chart-line"></i></div>
+            <div class="stat-data">
+                <span class="stat-value" id="stat-price-changes">0</span>
+                <span class="stat-label">📈 Fiyatı Değişenler</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Filter & Search Controls Bar -->
+    <section class="controls-section glass-panel">
+        <div class="brand-filter-pills" id="brand-pills">
+            <button class="pill-btn active" data-brand="all">
+                <i class="fa-solid fa-globe"></i> Tümü
+            </button>
+            <button class="pill-btn" data-brand="Volkswagen">VW</button>
+            <button class="pill-btn" data-brand="Skoda">Skoda</button>
+            <button class="pill-btn" data-brand="Renault">Renault</button>
+            <button class="pill-btn" data-brand="Ford">Ford</button>
+            <button class="pill-btn" data-brand="Hyundai">Hyundai</button>
+            <button class="pill-btn" data-brand="Toyota">Toyota</button>
+            <button class="pill-btn" data-brand="Chery">Chery</button>
+            <button class="pill-btn" data-brand="Dacia">Dacia</button>
+        </div>
+
+        <div class="filter-controls-row">
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                <input type="text" id="input-search" placeholder="Model, Donanım Paketi veya Motor Ara...">
+                <button id="btn-clear-search" class="btn-clear"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="toggle-group">
+                <label class="toggle-switch" title="Sadece Sisteme Yeni Eklenen Model/Paketleri Göster">
+                    <input type="checkbox" id="chk-only-new">
+                    <span class="slider"></span>
+                    <span class="toggle-label"><i class="fa-solid fa-sparkles"></i> Sadece Yeniler</span>
+                </label>
+
+                <label class="toggle-switch" title="Sadece Fiyat Değişikliği Olan Araçları Göster">
+                    <input type="checkbox" id="chk-only-changes">
+                    <span class="slider"></span>
+                    <span class="toggle-label"><i class="fa-solid fa-arrow-trend-up"></i> Fiyat Değişenler</span>
+                </label>
+            </div>
+
+            <div class="sort-selector">
+                <select id="select-sort">
+                    <option value="price_asc">Fiyat: Düşükten Yükseğe</option>
+                    <option value="price_desc">Fiyat: Yüksekten Düşüğe</option>
+                    <option value="brand">Markaya Göre Sırala</option>
+                    <option value="model">Modele Göre Sırala</option>
+                </select>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Price Table -->
+    <section class="table-section glass-panel">
+        <div class="table-header-info">
+            <h2><i class="fa-solid fa-list-check"></i> Donanım ve Fiyat Listesi</h2>
+            <span class="records-count-tag" id="lbl-records-count">Yükleniyor...</span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="prices-table" id="table-prices">
+                <thead>
+                    <tr>
+                        <th>Marka</th>
+                        <th>Model Adı</th>
+                        <th>Donanım Paketi & Motor</th>
+                        <th>Güncel Fiyat</th>
+                        <th>Değişim & Durum Rozetleri</th>
+                        <th>Kaynak</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-prices">
+                    <tr>
+                        <td colspan="6" class="text-center py-4">
+                            <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
+                            <p class="mt-2">Veriler yükleniyor...</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<!-- Live Scraper Modal Overlay -->
+<div id="scrape-modal" class="modal-backdrop hidden">
+    <div class="modal-card glass-panel">
+        <div class="modal-icon">
+            <i class="fa-solid fa-rotate fa-spin"></i>
+        </div>
+        <h3>Tüm Markalar Taranıyor</h3>
+        <p id="modal-scrape-msg">Web sitelerinden canlı fiyatlar çekiliyor...</p>
+        <div class="progress-bar-container">
+            <div id="modal-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

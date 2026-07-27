@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Giriş Yap — Araç Fiyat Takip Otomasyonu{% endblock %}
+
+{% block content %}
+<div class="auth-card-container">
+    <div class="auth-card glass-panel">
+        <div class="auth-header">
+            <div class="brand-logo">
+                <i class="fa-solid fa-gauge-high"></i>
+            </div>
+            <h2>Admin Girişi</h2>
+            <p>Araç Fiyat Takip ve Otomasyon Paneli</p>
+        </div>
+
+        <form method="POST" action="{{ url_for('login') }}" class="auth-form">
+            <div class="form-group">
+                <label for="password"><i class="fa-solid fa-key"></i> Admin Şifresi</label>
+                <input type="password" id="password" name="password" required placeholder="Şifrenizi giriniz" autofocus>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fa-solid fa-right-to-bracket"></i> Yönetim Paneline Giriş Yap
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
