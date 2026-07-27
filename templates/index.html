@@ -112,7 +112,23 @@
             </div>
 
             <div class="sort-selector">
-                <select id="select-sort">
+                <select id="select-fuel" title="Yakıt Tipi">
+                    <option value="all">⚡ Tüm Yakıtlar</option>
+                    <option value="Benzin">⛽ Benzinli</option>
+                    <option value="Dizel">🛢️ Dizel</option>
+                    <option value="Hibrit">🟢 Hibrit</option>
+                    <option value="Elektrik">🔌 Elektrikli</option>
+                </select>
+
+                <select id="select-body" title="Kasa Tipi">
+                    <option value="all">🚙 Tüm Kasalar</option>
+                    <option value="SUV">🚙 SUV</option>
+                    <option value="Sedan">🚘 Sedan</option>
+                    <option value="Hatchback">🏎️ Hatchback</option>
+                    <option value="Ticari">🚚 Ticari / Pick-up</option>
+                </select>
+
+                <select id="select-sort" title="Sıralama">
                     <option value="price_asc">Fiyat: Düşükten Yükseğe</option>
                     <option value="price_desc">Fiyat: Yüksekten Düşüğe</option>
                     <option value="brand">Markaya Göre Sırala</option>
@@ -136,8 +152,12 @@
                         <th>Marka</th>
                         <th>Model Adı</th>
                         <th>Donanım Paketi & Motor</th>
+                        <th>Özellikler (Yakıt / Kasa / Vites)</th>
                         <th>Güncel Fiyat</th>
                         <th>Değişim & Durum Rozetleri</th>
+                        <th>Kaynak</th>
+                    </tr>
+                </thead>
                         <th>Kaynak</th>
                     </tr>
                 </thead>

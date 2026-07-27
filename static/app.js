@@ -105,10 +105,30 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    let selectedFuel = "all";
+    let selectedBody = "all";
+
+    const selectFuel = document.getElementById("select-fuel");
+    const selectBody = document.getElementById("select-body");
+
+    if (selectFuel) {
+        selectFuel.addEventListener("change", (e) => {
+            selectedFuel = e.target.value;
+            fetchPrices();
+        });
+    }
+
+    if (selectBody) {
+        selectBody.addEventListener("change", (e) => {
+            selectedBody = e.target.value;
+            fetchPrices();
+        });
+    }
+
     async function fetchPrices() {
         tbodyPrices.innerHTML = `
             <tr>
-                <td colspan="6" class="text-center py-4">
+                <td colspan="7" class="text-center py-4">
                     <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
                     <p class="mt-2">Veriler yükleniyor...</p>
                 </td>
@@ -119,6 +139,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const params = new URLSearchParams({
                 brand: currentBrand,
                 search: searchQuery,
+                fuel: selectedFuel,
+                body: selectedBody,
                 only_new: onlyNew,
                 only_changes: onlyChanges,
                 sort: sortBy
@@ -134,7 +156,7 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error("fetchPrices error:", err);
             tbodyPrices.innerHTML = `
                 <tr>
-                    <td colspan="6" class="text-center py-4 text-danger">
+                    <td colspan="7" class="text-center py-4 text-danger">
                         <i class="fa-solid fa-triangle-exclamation fa-2x"></i>
                         <p class="mt-2">Veriler yüklenirken hata oluştu.</p>
                     </td>
@@ -147,7 +169,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!prices || prices.length === 0) {
             tbodyPrices.innerHTML = `
                 <tr>
-                    <td colspan="6" class="text-center py-4 text-muted">
+                    <td colspan="7" class="text-center py-4 text-muted">
                         <i class="fa-solid fa-magnifying-glass fa-2x mb-2"></i>
                         <p>Kriterlere uygun araç kaydı bulunamadı.</p>
                     </td>
@@ -163,6 +185,18 @@ document.addEventListener("DOMContentLoaded", () => {
             const variant = r.variant || "—";
             const priceRaw = r.price_raw || "—";
             const source = r.source || "—";
+
+            const fuel = r.fuel_type || "Benzin";
+            const trans = r.transmission || "Otomatik";
+            const body = r.body_type || "Binek";
+            const hp = r.engine_power || "";
+
+            let attrHtml = `<span class="attr-pill"><i class="fa-solid fa-gas-pump"></i> ${fuel}</span> ` +
+                           `<span class="attr-pill"><i class="fa-solid fa-car"></i> ${body}</span> ` +
+                           `<span class="attr-pill"><i class="fa-solid fa-gear"></i> ${trans}</span>`;
+            if (hp) {
+                attrHtml += ` <span class="attr-pill"><i class="fa-solid fa-bolt"></i> ${hp}</span>`;
+            }
 
             // Rozetler
             let badgesHtml = "";
@@ -189,6 +223,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <td><span class="brand-badge">${brand}</span></td>
                     <td class="model-name">${modelName}</td>
                     <td class="variant-name">${variant}</td>
+                    <td>${attrHtml}</td>
                     <td class="price-text">${priceRaw}</td>
                     <td>${badgesHtml || '<span class="text-subtle">-</span>'}</td>
                     <td><span class="source-tag">${source}</span></td>

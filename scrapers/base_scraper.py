@@ -100,7 +100,11 @@ def init_db(conn: sqlite3.Connection) -> None:
             is_new_variant INTEGER DEFAULT 0,
             previous_price_int INTEGER,
             price_diff   INTEGER DEFAULT 0,
-            price_change_pct REAL DEFAULT 0.0
+            price_change_pct REAL DEFAULT 0.0,
+            fuel_type    TEXT,
+            transmission TEXT,
+            body_type    TEXT,
+            engine_power TEXT
         );
 
         CREATE TABLE IF NOT EXISTS scrape_log (
@@ -132,12 +136,55 @@ def init_db(conn: sqlite3.Connection) -> None:
         ("previous_price_int", "INTEGER"),
         ("price_diff", "INTEGER DEFAULT 0"),
         ("price_change_pct", "REAL DEFAULT 0.0"),
+        ("fuel_type", "TEXT"),
+        ("transmission", "TEXT"),
+        ("body_type", "TEXT"),
+        ("engine_power", "TEXT"),
     ]
     for col_name, col_type in columns_to_add:
         if col_name not in existing_cols:
             conn.execute(f"ALTER TABLE prices ADD COLUMN {col_name} {col_type}")
 
     conn.commit()
+
+
+def parse_vehicle_attributes(brand: str, model_name: str, variant: str) -> tuple[str, str, str, str]:
+    """Araç markası, modeli ve varyantından yakıt, vites, kasa ve motor gücü özniteliklerini ayıkla."""
+    import re
+    text = f"{brand} {model_name} {variant}"
+
+    # Yakıt Tipi
+    fuel = "Benzin"
+    if re.search(r"elektrik|ev\b|\bkw\b", text, re.I):
+        fuel = "Elektrik"
+    elif re.search(r"hybrid|hibrit|e-cvt|hev|mhev|etsi|e-tec", text, re.I):
+        fuel = "Hibrit"
+    elif re.search(r"d-4d|dizel|dci|crdi|ecoblue|1\.5 d|2\.2 d|tdi", text, re.I):
+        fuel = "Dizel"
+    elif re.search(r"lpg|gpl", text, re.I):
+        fuel = "LPG"
+
+    # Şanzıman Tipi
+    trans = "Otomatik"
+    if re.search(r"m/t|manuel|ileri manuel|\bmt\b", text, re.I):
+        trans = "Manuel"
+
+    # Kasa Tipi
+    body = "Binek"
+    if re.search(r"suv|cross|c-hr|kuga|puma|tucson|bayon|kona|duster|captur|austral|taigo|t-cross|t-roc|tiguan|tayron|kodiaq|karoq|kamiq", text, re.I):
+        body = "SUV"
+    elif re.search(r"sedan|corolla|passat|megane sedan", text, re.I):
+        body = "Sedan"
+    elif re.search(r"hatchback|htb|clio|i20|i10|golf|polo|fabia|scala|yaris|sandero", text, re.I):
+        body = "Hatchback"
+    elif re.search(r"van|cargo|kamyonet|panelvan|combi|master|transit|custom|courier|hilux|prado|proace|kangoo|staria", text, re.I):
+        body = "Ticari / Pick-up"
+
+    # Motor / Güç (PS/HP/kW)
+    hp_match = re.search(r"(\d+\s*(?:ps|hp|kw))", text, re.I)
+    engine_power = hp_match.group(1).upper() if hp_match else ""
+
+    return fuel, trans, body, engine_power
 
 
 def save_records(
@@ -191,12 +238,15 @@ def save_records(
                 if previous_price_int > 0:
                     price_change_pct = round((price_diff / previous_price_int) * 100, 2)
 
+            fuel_type, transmission, body_type, engine_power = parse_vehicle_attributes(brand, model_name, variant)
+
             conn.execute(
                 """INSERT INTO prices
                    (brand, model_name, variant, price_raw, price_int, currency,
                     source, is_stale, scraped_at, scraped_date,
-                    is_new_model, is_new_variant, previous_price_int, price_diff, price_change_pct)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    is_new_model, is_new_variant, previous_price_int, price_diff, price_change_pct,
+                    fuel_type, transmission, body_type, engine_power)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     brand,
                     model_name,
@@ -213,6 +263,10 @@ def save_records(
                     previous_price_int,
                     price_diff,
                     price_change_pct,
+                    fuel_type,
+                    transmission,
+                    body_type,
+                    engine_power,
                 ),
             )
             inserted += 1

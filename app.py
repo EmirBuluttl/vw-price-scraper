@@ -211,6 +211,9 @@ def api_summary():
 def api_prices():
     brand = request.args.get("brand", "").strip()
     search = request.args.get("search", "").strip()
+    fuel = request.args.get("fuel", "").strip()
+    body = request.args.get("body", "").strip()
+    trans = request.args.get("trans", "").strip()
     only_new = request.args.get("only_new", "false").lower() == "true"
     only_changes = request.args.get("only_changes", "false").lower() == "true"
     sort_by = request.args.get("sort", "price_asc")
@@ -235,6 +238,18 @@ def api_prices():
     if brand and brand.lower() != "all":
         query += " AND LOWER(brand) = ?"
         params.append(brand.lower())
+
+    if fuel and fuel.lower() != "all":
+        query += " AND LOWER(fuel_type) = ?"
+        params.append(fuel.lower())
+
+    if body and body.lower() != "all":
+        query += " AND LOWER(body_type) LIKE ?"
+        params.append(f"%{body.lower()}%")
+
+    if trans and trans.lower() != "all":
+        query += " AND LOWER(transmission) = ?"
+        params.append(trans.lower())
 
     if search:
         query += " AND (LOWER(brand) LIKE ? OR LOWER(model_name) LIKE ? OR LOWER(variant) LIKE ?)"
