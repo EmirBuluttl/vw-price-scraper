@@ -82,7 +82,7 @@ def http_post(url: str, **kwargs) -> requests.Response:
 
 # ─── Veritabanı Yardımcıları ──────────────────────────────────────────────────
 def init_db(conn: sqlite3.Connection) -> None:
-    """Tüm markalar için ortak şemayı oluştur (yoksa)."""
+    """Tüm markalar için ortak şemayı ve yetkilendirme tablosunu oluştur."""
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS prices (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,7 +95,12 @@ def init_db(conn: sqlite3.Connection) -> None:
             source       TEXT,
             is_stale     INTEGER DEFAULT 0,
             scraped_at   TEXT    NOT NULL,
-            scraped_date TEXT    NOT NULL
+            scraped_date TEXT    NOT NULL,
+            is_new_model INTEGER DEFAULT 0,
+            is_new_variant INTEGER DEFAULT 0,
+            previous_price_int INTEGER,
+            price_diff   INTEGER DEFAULT 0,
+            price_change_pct REAL DEFAULT 0.0
         );
 
         CREATE TABLE IF NOT EXISTS scrape_log (
@@ -108,9 +113,30 @@ def init_db(conn: sqlite3.Connection) -> None:
             message      TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS users (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            username      TEXT    UNIQUE NOT NULL,
+            password_hash TEXT    NOT NULL,
+            created_at    TEXT    NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_prices_brand_date
             ON prices (brand, scraped_date);
     """)
+
+    # Var olan veritabanlarına yeni kolonları güvenle ekle (migration)
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(prices)").fetchall()}
+    columns_to_add = [
+        ("is_new_model", "INTEGER DEFAULT 0"),
+        ("is_new_variant", "INTEGER DEFAULT 0"),
+        ("previous_price_int", "INTEGER"),
+        ("price_diff", "INTEGER DEFAULT 0"),
+        ("price_change_pct", "REAL DEFAULT 0.0"),
+    ]
+    for col_name, col_type in columns_to_add:
+        if col_name not in existing_cols:
+            conn.execute(f"ALTER TABLE prices ADD COLUMN {col_name} {col_type}")
+
     conn.commit()
 
 
@@ -121,36 +147,76 @@ def save_records(
     source: str,
     is_stale: int = 0,
 ) -> int:
-    """Bugün kaydedilmemiş kayıtları ekle. Döndürülen değer eklenen satır sayısı."""
+    """Bugün kaydedilmemiş kayıtları delta hesaplayarak ekle. Döndürülen değer eklenen satır sayısı."""
     today = date.today().isoformat()
     now = datetime.now().isoformat(timespec="seconds")
     inserted = 0
+
     for r in records:
+        model_name = r["model_name"]
+        variant = r.get("variant", "")
+        price_int = r.get("price_int")
+
         exists = conn.execute(
             """SELECT 1 FROM prices
                WHERE brand=? AND model_name=? AND variant=? AND scraped_date=?""",
-            (brand, r["model_name"], r.get("variant", ""), today),
+            (brand, model_name, variant, today),
         ).fetchone()
+
         if not exists:
+            # 1. Yeni Model Kontrolü (Bugünden önceki günlerde bu marka & model var mıydı?)
+            prev_model_exists = conn.execute(
+                """SELECT 1 FROM prices
+                   WHERE brand=? AND model_name=? AND scraped_date < ?""",
+                (brand, model_name, today),
+            ).fetchone()
+            is_new_model = 1 if not prev_model_exists else 0
+
+            # 2. Yeni Paket Kontrolü (Bugünden önceki günlerde bu marka & model & varyant var mıydı?)
+            prev_variant_row = conn.execute(
+                """SELECT price_int FROM prices
+                   WHERE brand=? AND model_name=? AND variant=? AND scraped_date < ?
+                   ORDER BY scraped_date DESC, id DESC LIMIT 1""",
+                (brand, model_name, variant, today),
+            ).fetchone()
+
+            is_new_variant = 1 if not prev_variant_row else 0
+            previous_price_int = None
+            price_diff = 0
+            price_change_pct = 0.0
+
+            if prev_variant_row and prev_variant_row[0] and price_int:
+                previous_price_int = prev_variant_row[0]
+                price_diff = price_int - previous_price_int
+                if previous_price_int > 0:
+                    price_change_pct = round((price_diff / previous_price_int) * 100, 2)
+
             conn.execute(
                 """INSERT INTO prices
                    (brand, model_name, variant, price_raw, price_int, currency,
-                    source, is_stale, scraped_at, scraped_date)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    source, is_stale, scraped_at, scraped_date,
+                    is_new_model, is_new_variant, previous_price_int, price_diff, price_change_pct)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     brand,
-                    r["model_name"],
-                    r.get("variant", ""),
+                    model_name,
+                    variant,
                     r.get("price_raw", ""),
-                    r.get("price_int"),
+                    price_int,
                     r.get("currency", "TRY"),
                     source,
                     is_stale,
                     now,
                     today,
+                    is_new_model,
+                    is_new_variant,
+                    previous_price_int,
+                    price_diff,
+                    price_change_pct,
                 ),
             )
             inserted += 1
+
     conn.commit()
     return inserted
 

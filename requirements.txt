@@ -11,6 +11,6 @@ requests>=2.31.0
 beautifulsoup4>=4.12.0
 lxml>=5.0.0          # Daha hızlı parser (bs4 için)
 
-# JavaScript gerektiren sitelerde son çare headless browser
-# (Şu an aktif değil; gelecekte entegre edilebilir)
-# playwright>=1.44.0
+# Web UI Dashboard & Authentication
+flask>=3.0.0
+werkzeug>=3.0.0
