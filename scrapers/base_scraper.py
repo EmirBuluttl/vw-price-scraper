@@ -145,6 +145,17 @@ def init_db(conn: sqlite3.Connection) -> None:
         if col_name not in existing_cols:
             conn.execute(f"ALTER TABLE prices ADD COLUMN {col_name} {col_type}")
 
+    # Null olan eski kayıtları otomatik doldur
+    unfilled = conn.execute("SELECT id, brand, model_name, variant FROM prices WHERE fuel_type IS NULL OR fuel_type = ''").fetchall()
+    if unfilled:
+        for r in unfilled:
+            row_id, brand, model_name, variant = r[0], r[1], r[2], r[3] or ""
+            fuel, trans, body, hp = parse_vehicle_attributes(brand, model_name, variant)
+            conn.execute(
+                "UPDATE prices SET fuel_type=?, transmission=?, body_type=?, engine_power=? WHERE id=?",
+                (fuel, trans, body, hp, row_id)
+            )
+
     conn.commit()
 
 
