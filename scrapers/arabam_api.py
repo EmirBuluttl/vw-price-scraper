@@ -99,8 +99,11 @@ def fetch_arabam_html(brand_slug: str) -> list[dict]:
     """arabam.com.tr HTML sayfasından fiyat parse et."""
     from bs4 import BeautifulSoup
     url = f"https://www.arabam.com/sifir/{brand_slug}"
-    r = http_get(url, headers={"Accept": "text/html"})
-    soup = BeautifulSoup(r.text, "html.parser")
+    try:
+        r = http_get(url, headers={"Accept": "text/html"})
+        soup = BeautifulSoup(r.text, "html.parser")
+    except Exception:
+        return []
     records: list[dict] = []
     seen: set[str] = set()
 

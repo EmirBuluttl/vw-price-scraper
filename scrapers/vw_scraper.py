@@ -46,7 +46,7 @@ def _parse_dogusoto_response(data: dict) -> list[dict]:
         price_val = item.get("price", 0)
         if price_val and float(price_val) > 100_000:
             price_int = int(price_val)
-            key = (model_name, variant)
+            key = (model_name, variant, price_int)
             if key not in seen:
                 seen.add(key)
                 records.append(

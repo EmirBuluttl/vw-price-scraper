@@ -46,14 +46,17 @@ def _parse_app_state(html: str) -> list[dict]:
                             admin = d["modelAdmin"]
                             m_data = d["modelData"]
                             name = admin.get("modelName") or admin.get("shortModelName")
+                            pv = m_data.get("pricedVersion") or admin.get("pricedVersion") or {}
+                            v_label = pv.get("label") or pv.get("name") or "Başlangıç Fiyatı"
                             min_price = m_data.get("minPrice") or m_data.get("webDisplayPrices", {}).get("displayPrice")
                             if name and min_price:
                                 price_int = int(float(min_price))
-                                if price_int > 100_000 and name not in seen:
-                                    seen.add(name)
+                                key = (name, v_label, price_int)
+                                if price_int > 100_000 and key not in seen:
+                                    seen.add(key)
                                     records.append({
                                         "model_name": name,
-                                        "variant": "Başlangıç Fiyatı",
+                                        "variant": v_label,
                                         "price_raw": fmt_price(price_int),
                                         "price_int": price_int,
                                         "currency": "TRY"
