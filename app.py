@@ -81,22 +81,35 @@ def login_required(f):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     conn = get_db()
-    admin_user = conn.execute("SELECT * FROM users WHERE username = 'admin'").fetchone()
+    users = conn.execute("SELECT * FROM users").fetchall()
     conn.close()
 
-    if not admin_user:
+    if not users:
         return redirect(url_for("setup_admin"))
 
     if session.get("user"):
         return redirect(url_for("index"))
 
     if request.method == "POST":
+        username_input = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        if check_password_hash(admin_user["password_hash"], password):
-            session["user"] = "admin"
+
+        matched_user = None
+        for u in users:
+            if username_input:
+                if u["username"].lower() == username_input.lower() and check_password_hash(u["password_hash"], password):
+                    matched_user = u
+                    break
+            else:
+                if check_password_hash(u["password_hash"], password):
+                    matched_user = u
+                    break
+
+        if matched_user:
+            session["user"] = matched_user["username"]
             return redirect(url_for("index"))
         else:
-            flash("Hatalı şifre! Lütfen tekrar deneyin.", "danger")
+            flash("Hatalı kullanıcı adı veya şifre!", "danger")
 
     return render_template("login.html")
 
