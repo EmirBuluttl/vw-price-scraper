@@ -82,29 +82,53 @@ def http_post(url: str, **kwargs) -> requests.Response:
 
 # ─── Veritabanı Yardımcıları ──────────────────────────────────────────────────
 def init_db(conn: sqlite3.Connection) -> None:
-    """Tüm markalar için ortak şemayı ve yetkilendirme tablosunu oluştur."""
+    """Tüm markalar için normalize edilmiş ilişkisel veritabanı şemasını ve yetki tablosunu oluştur."""
+    conn.execute("PRAGMA foreign_keys = ON;")
+    
     conn.executescript("""
-        CREATE TABLE IF NOT EXISTS prices (
+        CREATE TABLE IF NOT EXISTS brands (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    UNIQUE NOT NULL,
+            code       TEXT,
+            created_at TEXT    NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS models (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            brand_id   INTEGER NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+            name       TEXT    NOT NULL,
+            body_type  TEXT,
+            created_at TEXT    NOT NULL,
+            UNIQUE(brand_id, name)
+        );
+
+        CREATE TABLE IF NOT EXISTS variants (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            brand        TEXT    NOT NULL,
-            model_name   TEXT    NOT NULL,
-            variant      TEXT,
-            price_raw    TEXT,
-            price_int    INTEGER,
-            currency     TEXT    DEFAULT 'TRY',
-            source       TEXT,
-            is_stale     INTEGER DEFAULT 0,
-            scraped_at   TEXT    NOT NULL,
-            scraped_date TEXT    NOT NULL,
-            is_new_model INTEGER DEFAULT 0,
-            is_new_variant INTEGER DEFAULT 0,
-            previous_price_int INTEGER,
-            price_diff   INTEGER DEFAULT 0,
-            price_change_pct REAL DEFAULT 0.0,
+            model_id     INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+            name         TEXT    NOT NULL,
             fuel_type    TEXT,
             transmission TEXT,
-            body_type    TEXT,
-            engine_power TEXT
+            engine_power TEXT,
+            model_year   TEXT,
+            created_at   TEXT    NOT NULL,
+            UNIQUE(model_id, name)
+        );
+
+        CREATE TABLE IF NOT EXISTS prices (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            variant_id         INTEGER NOT NULL REFERENCES variants(id) ON DELETE CASCADE,
+            price_raw          TEXT    NOT NULL,
+            price_int          INTEGER NOT NULL,
+            currency           TEXT    DEFAULT 'TRY',
+            scraped_at         TEXT    NOT NULL,
+            scraped_date       TEXT    NOT NULL,
+            is_latest          INTEGER DEFAULT 1,
+            is_new_model       INTEGER DEFAULT 0,
+            is_new_variant     INTEGER DEFAULT 0,
+            previous_price_int INTEGER,
+            price_diff         INTEGER DEFAULT 0,
+            price_change_pct   REAL    DEFAULT 0.0,
+            source             TEXT
         );
 
         CREATE TABLE IF NOT EXISTS scrape_log (
@@ -124,37 +148,9 @@ def init_db(conn: sqlite3.Connection) -> None:
             created_at    TEXT    NOT NULL
         );
 
-        CREATE INDEX IF NOT EXISTS idx_prices_brand_date
-            ON prices (brand, scraped_date);
+        CREATE INDEX IF NOT EXISTS idx_prices_variant_latest ON prices (variant_id, is_latest);
+        CREATE INDEX IF NOT EXISTS idx_prices_date ON prices (scraped_date);
     """)
-
-    # Var olan veritabanlarına yeni kolonları güvenle ekle (migration)
-    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(prices)").fetchall()}
-    columns_to_add = [
-        ("is_new_model", "INTEGER DEFAULT 0"),
-        ("is_new_variant", "INTEGER DEFAULT 0"),
-        ("previous_price_int", "INTEGER"),
-        ("price_diff", "INTEGER DEFAULT 0"),
-        ("price_change_pct", "REAL DEFAULT 0.0"),
-        ("fuel_type", "TEXT"),
-        ("transmission", "TEXT"),
-        ("body_type", "TEXT"),
-        ("engine_power", "TEXT"),
-    ]
-    for col_name, col_type in columns_to_add:
-        if col_name not in existing_cols:
-            conn.execute(f"ALTER TABLE prices ADD COLUMN {col_name} {col_type}")
-
-    # Null olan eski kayıtları otomatik doldur
-    unfilled = conn.execute("SELECT id, brand, model_name, variant FROM prices WHERE fuel_type IS NULL OR fuel_type = ''").fetchall()
-    if unfilled:
-        for r in unfilled:
-            row_id, brand, model_name, variant = r[0], r[1], r[2], r[3] or ""
-            fuel, trans, body, hp = parse_vehicle_attributes(brand, model_name, variant)
-            conn.execute(
-                "UPDATE prices SET fuel_type=?, transmission=?, body_type=?, engine_power=? WHERE id=?",
-                (fuel, trans, body, hp, row_id)
-            )
 
     conn.commit()
 
@@ -200,42 +196,74 @@ def parse_vehicle_attributes(brand: str, model_name: str, variant: str) -> tuple
 
 def save_records(
     conn: sqlite3.Connection,
-    brand: str,
+    brand_name: str,
     records: list[dict],
     source: str,
     is_stale: int = 0,
 ) -> int:
-    """Bugün kaydedilmemiş kayıtları delta hesaplayarak ekle. Döndürülen değer eklenen satır sayısı."""
+    """Normalize edilmiş tablolara (brands, models, variants, prices) veri yaz ve delta hesapla."""
     today = date.today().isoformat()
     now = datetime.now().isoformat(timespec="seconds")
     inserted = 0
 
+    # 1. Brand Kaydet / Al
+    brand_row = conn.execute("SELECT id FROM brands WHERE name = ?", (brand_name,)).fetchone()
+    if brand_row:
+        brand_id = brand_row[0]
+    else:
+        cursor = conn.execute("INSERT INTO brands (name, code, created_at) VALUES (?, ?, ?)",
+                              (brand_name, brand_name.lower(), now))
+        brand_id = cursor.lastrowid
+
     for r in records:
         model_name = r["model_name"]
-        variant = r.get("variant", "")
+        variant_name = r.get("variant", "") or "Standart"
         price_int = r.get("price_int")
+        if not price_int:
+            continue
 
+        fuel_type, transmission, body_type, engine_power = parse_vehicle_attributes(brand_name, model_name, variant_name)
+
+        # 2. Model Kaydet / Al
+        model_row = conn.execute("SELECT id FROM models WHERE brand_id = ? AND name = ?", (brand_id, model_name)).fetchone()
+        if model_row:
+            model_id = model_row[0]
+        else:
+            cursor = conn.execute("INSERT INTO models (brand_id, name, body_type, created_at) VALUES (?, ?, ?, ?)",
+                                  (brand_id, model_name, body_type, now))
+            model_id = cursor.lastrowid
+
+        # 3. Variant Kaydet / Al
+        variant_row = conn.execute("SELECT id FROM variants WHERE model_id = ? AND name = ?", (model_id, variant_name)).fetchone()
+        if variant_row:
+            variant_id = variant_row[0]
+        else:
+            cursor = conn.execute("""
+                INSERT INTO variants (model_id, name, fuel_type, transmission, engine_power, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (model_id, variant_name, fuel_type, transmission, engine_power, now))
+            variant_id = cursor.lastrowid
+
+        # 4. Bugün aynı varyant için fiyat eklenmiş mi kontrol et
         exists = conn.execute(
-            """SELECT 1 FROM prices
-               WHERE brand=? AND model_name=? AND variant=? AND scraped_date=?""",
-            (brand, model_name, variant, today),
+            "SELECT 1 FROM prices WHERE variant_id=? AND scraped_date=?",
+            (variant_id, today),
         ).fetchone()
 
         if not exists:
-            # 1. Yeni Model Kontrolü (Bugünden önceki günlerde bu marka & model var mıydı?)
+            # Delta Hesaplamaları
             prev_model_exists = conn.execute(
-                """SELECT 1 FROM prices
-                   WHERE brand=? AND model_name=? AND scraped_date < ?""",
-                (brand, model_name, today),
+                """SELECT 1 FROM prices p JOIN variants v ON p.variant_id = v.id
+                   WHERE v.model_id=? AND p.scraped_date < ?""",
+                (model_id, today),
             ).fetchone()
             is_new_model = 1 if not prev_model_exists else 0
 
-            # 2. Yeni Paket Kontrolü (Bugünden önceki günlerde bu marka & model & varyant var mıydı?)
             prev_variant_row = conn.execute(
                 """SELECT price_int FROM prices
-                   WHERE brand=? AND model_name=? AND variant=? AND scraped_date < ?
+                   WHERE variant_id=? AND scraped_date < ?
                    ORDER BY scraped_date DESC, id DESC LIMIT 1""",
-                (brand, model_name, variant, today),
+                (variant_id, today),
             ).fetchone()
 
             is_new_variant = 1 if not prev_variant_row else 0
@@ -249,24 +277,19 @@ def save_records(
                 if previous_price_int > 0:
                     price_change_pct = round((price_diff / previous_price_int) * 100, 2)
 
-            fuel_type, transmission, body_type, engine_power = parse_vehicle_attributes(brand, model_name, variant)
+            # Önceki is_latest = 1 olan kaydı 0 yap
+            conn.execute("UPDATE prices SET is_latest = 0 WHERE variant_id = ?", (variant_id,))
 
             conn.execute(
                 """INSERT INTO prices
-                   (brand, model_name, variant, price_raw, price_int, currency,
-                    source, is_stale, scraped_at, scraped_date,
-                    is_new_model, is_new_variant, previous_price_int, price_diff, price_change_pct,
-                    fuel_type, transmission, body_type, engine_power)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   (variant_id, price_raw, price_int, currency, scraped_at, scraped_date,
+                    is_latest, is_new_model, is_new_variant, previous_price_int, price_diff, price_change_pct, source)
+                   VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?)""",
                 (
-                    brand,
-                    model_name,
-                    variant,
-                    r.get("price_raw", ""),
+                    variant_id,
+                    r.get("price_raw", fmt_price(price_int)),
                     price_int,
                     r.get("currency", "TRY"),
-                    source,
-                    is_stale,
                     now,
                     today,
                     is_new_model,
@@ -274,10 +297,7 @@ def save_records(
                     previous_price_int,
                     price_diff,
                     price_change_pct,
-                    fuel_type,
-                    transmission,
-                    body_type,
-                    engine_power,
+                    source,
                 ),
             )
             inserted += 1

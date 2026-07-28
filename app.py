@@ -1,9 +1,9 @@
 """
-app.py  —  Çoklu Marka Araç Fiyat Scraper Web UI & API Sunucusu
+app.py  —  Coklu Marka Arac Fiyat Scraper Web UI & API Sunucusu
 ===============================================================
-Kullanım:
+Kullanim:
     python app.py
-    (Web tarayıcısında http://localhost:5000 adresine gidin)
+    (Web tarayicisinda http://localhost:5000 adresine gidin)
 """
 
 from __future__ import annotations
@@ -42,6 +42,8 @@ from scrapers.dacia_scraper import DaciaScraper
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "car_price_scraper_secret_key_2026")
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 ALL_SCRAPERS = [
     VWScraper(),
@@ -55,7 +57,7 @@ ALL_SCRAPERS = [
 ]
 
 SCRAPER_MAP = {s.brand.lower(): s for s in ALL_SCRAPERS}
-SCRAPE_STATUS = {"running": False, "message": "Boşta", "progress": 0, "last_run": None}
+SCRAPE_STATUS = {"running": False, "message": "Bosta", "progress": 0, "last_run": None}
 
 
 def get_db() -> sqlite3.Connection:
@@ -70,13 +72,13 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         if "user" not in session:
             if request.path.startswith("/api/"):
-                return jsonify({"error": "Yetkisiz erişim. Lütfen giriş yapın."}), 401
+                return jsonify({"error": "Yetkisiz erisim. Lutfen giris yapin."}), 401
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated_function
 
 
-# ─── Auth Rotaları ────────────────────────────────────────────────────────────
+# --- Auth Rotalari ------------------------------------------------------------
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -109,7 +111,7 @@ def login():
             session["user"] = matched_user["username"]
             return redirect(url_for("index"))
         else:
-            flash("Hatalı kullanıcı adı veya şifre!", "danger")
+            flash("Hatali kullanici adi veya sifre!", "danger")
 
     return render_template("login.html")
 
@@ -128,9 +130,9 @@ def setup_admin():
         confirm = request.form.get("confirm_password", "")
 
         if not password or len(password) < 4:
-            flash("Şifre en az 4 karakter olmalıdır.", "warning")
+            flash("Sifre en az 4 karakter olmalidir.", "warning")
         elif password != confirm:
-            flash("Şifreler eşleşmiyor!", "danger")
+            flash("Sifreler eslesmiyor!", "danger")
         else:
             pwd_hash = generate_password_hash(password)
             conn.execute(
@@ -140,7 +142,7 @@ def setup_admin():
             conn.commit()
             conn.close()
             session["user"] = "admin"
-            flash("Admin şifreniz başarıyla oluşturuldu!", "success")
+            flash("Admin sifreniz basariyla olusturuldu!", "success")
             return redirect(url_for("index"))
 
     conn.close()
@@ -153,7 +155,7 @@ def logout():
     return redirect(url_for("login"))
 
 
-# ─── Web UI Ana Sayfa ─────────────────────────────────────────────────────────
+# --- Web UI Ana Sayfa ---------------------------------------------------------
 
 @app.route("/")
 @login_required
@@ -161,50 +163,49 @@ def index():
     return render_template("index.html")
 
 
-# ─── API Endpoints ───────────────────────────────────────────────────────────
+# --- API Endpoints -----------------------------------------------------------
 
 @app.route("/api/summary")
 @login_required
 def api_summary():
     conn = get_db()
     
-    # En son çekilen tarih
     last_date_row = conn.execute("SELECT MAX(scraped_date) as max_date FROM prices").fetchone()
     last_date = last_date_row["max_date"] if last_date_row and last_date_row["max_date"] else None
 
-    # Toplam model/varyant sayısı (Son tarihteki)
-    total_models = 0
-    if last_date:
-        total_models = conn.execute(
-            "SELECT COUNT(*) as cnt FROM prices WHERE scraped_date = ?", (last_date,)
-        ).fetchone()["cnt"]
+    # Toplam model/varyant sayisi (is_latest = 1)
+    total_models = conn.execute(
+        "SELECT COUNT(*) as cnt FROM prices WHERE is_latest = 1"
+    ).fetchone()["cnt"]
 
-    # Yeni Model sayısı (is_new_model = 1)
+    # Yeni Model sayisi (is_new_model = 1 AND is_latest = 1)
     new_models_cnt = conn.execute(
-        "SELECT COUNT(DISTINCT model_name) as cnt FROM prices WHERE is_new_model = 1"
+        "SELECT COUNT(DISTINCT v.model_id) as cnt FROM prices p JOIN variants v ON p.variant_id = v.id WHERE p.is_new_model = 1 AND p.is_latest = 1"
     ).fetchone()["cnt"]
 
-    # Yeni Paket sayısı (is_new_variant = 1)
+    # Yeni Paket sayisi (is_new_variant = 1 AND is_latest = 1)
     new_variants_cnt = conn.execute(
-        "SELECT COUNT(*) as cnt FROM prices WHERE is_new_variant = 1"
+        "SELECT COUNT(*) as cnt FROM prices WHERE is_new_variant = 1 AND is_latest = 1"
     ).fetchone()["cnt"]
 
-    # Fiyatı Değişenler sayısı (price_diff != 0)
+    # Fiyati Degisenler sayisi (price_diff != 0 AND is_latest = 1)
     price_changes_cnt = conn.execute(
-        "SELECT COUNT(*) as cnt FROM prices WHERE price_diff != 0 AND price_diff IS NOT NULL"
+        "SELECT COUNT(*) as cnt FROM prices WHERE price_diff != 0 AND price_diff IS NOT NULL AND is_latest = 1"
     ).fetchone()["cnt"]
 
-    # Marka Bazlı Özet Listesi
+    # Marka Bazli Ozet Listesi
     brands_summary = conn.execute("""
-        SELECT brand,
-               MAX(scraped_date) as last_date,
-               COUNT(*) as total_records,
-               SUM(CASE WHEN scraped_date = ? THEN 1 ELSE 0 END) as today_records,
-               SUM(CASE WHEN is_stale = 1 THEN 1 ELSE 0 END) as stale_count
-        FROM prices
-        GROUP BY brand
-        ORDER BY brand
-    """, (last_date,)).fetchall()
+        SELECT b.name as brand,
+               MAX(p.scraped_date) as last_date,
+               COUNT(p.id) as total_records,
+               SUM(CASE WHEN p.is_latest = 1 THEN 1 ELSE 0 END) as today_records
+        FROM brands b
+        LEFT JOIN models m ON m.brand_id = b.id
+        LEFT JOIN variants v ON v.model_id = m.id
+        LEFT JOIN prices p ON p.variant_id = v.id
+        GROUP BY b.id, b.name
+        ORDER BY b.name
+    """).fetchall()
 
     conn.close()
 
@@ -233,59 +234,64 @@ def api_prices():
 
     conn = get_db()
 
-    # En güncel tarihi bul
     last_date_row = conn.execute("SELECT MAX(scraped_date) as max_date FROM prices").fetchone()
     target_date = last_date_row["max_date"] if last_date_row else None
 
-    if not target_date:
-        conn.close()
-        return jsonify({"prices": [], "total": 0})
-
-    query = "SELECT * FROM prices WHERE 1=1"
+    query = """
+        SELECT p.id, b.name as brand, m.name as model_name, v.name as variant,
+               v.fuel_type, v.transmission, v.engine_power, m.body_type,
+               p.price_raw, p.price_int, p.currency, p.scraped_at, p.scraped_date,
+               p.is_latest, p.is_new_model, p.is_new_variant, p.previous_price_int,
+               p.price_diff, p.price_change_pct, p.source
+        FROM prices p
+        JOIN variants v ON p.variant_id = v.id
+        JOIN models m ON v.model_id = m.id
+        JOIN brands b ON m.brand_id = b.id
+        WHERE 1=1
+    """
     params = []
 
     if request.args.get("all_dates") != "true":
-        query += " AND scraped_date = ?"
-        params.append(target_date)
+        query += " AND p.is_latest = 1"
 
     if brand and brand.lower() != "all":
-        query += " AND LOWER(brand) = ?"
+        query += " AND LOWER(b.name) = ?"
         params.append(brand.lower())
 
     if fuel and fuel.lower() != "all":
-        query += " AND LOWER(fuel_type) = ?"
+        query += " AND LOWER(v.fuel_type) = ?"
         params.append(fuel.lower())
 
     if body and body.lower() != "all":
-        query += " AND LOWER(body_type) LIKE ?"
+        query += " AND LOWER(m.body_type) LIKE ?"
         params.append(f"%{body.lower()}%")
 
     if trans and trans.lower() != "all":
-        query += " AND LOWER(transmission) = ?"
+        query += " AND LOWER(v.transmission) = ?"
         params.append(trans.lower())
 
     if search:
-        query += " AND (LOWER(brand) LIKE ? OR LOWER(model_name) LIKE ? OR LOWER(variant) LIKE ?)"
+        query += " AND (LOWER(b.name) LIKE ? OR LOWER(m.name) LIKE ? OR LOWER(v.name) LIKE ?)"
         term = f"%{search.lower()}%"
         params.extend([term, term, term])
 
     if only_new:
-        query += " AND (is_new_model = 1 OR is_new_variant = 1)"
+        query += " AND (p.is_new_model = 1 OR p.is_new_variant = 1)"
 
     if only_changes:
-        query += " AND price_diff != 0 AND price_diff IS NOT NULL"
+        query += " AND p.price_diff != 0 AND p.price_diff IS NOT NULL"
 
-    # Sıralama
+    # Siralama
     if sort_by == "price_asc":
-        query += " ORDER BY price_int ASC"
+        query += " ORDER BY p.price_int ASC"
     elif sort_by == "price_desc":
-        query += " ORDER BY price_int DESC"
+        query += " ORDER BY p.price_int DESC"
     elif sort_by == "brand":
-        query += " ORDER BY brand ASC, price_int ASC"
+        query += " ORDER BY b.name ASC, p.price_int ASC"
     elif sort_by == "model":
-        query += " ORDER BY model_name ASC, price_int ASC"
+        query += " ORDER BY m.name ASC, p.price_int ASC"
     else:
-        query += " ORDER BY price_int ASC"
+        query += " ORDER BY p.price_int ASC"
 
     rows = conn.execute(query, params).fetchall()
     conn.close()
@@ -301,7 +307,7 @@ def api_prices():
 def _run_scrapers_thread():
     global SCRAPE_STATUS
     SCRAPE_STATUS["running"] = True
-    SCRAPE_STATUS["message"] = "Tarama başlatılıyor..."
+    SCRAPE_STATUS["message"] = "Tarama baslatiliyor..."
     SCRAPE_STATUS["progress"] = 0
 
     conn = sqlite3.connect(str(DB_PATH))
@@ -310,7 +316,7 @@ def _run_scrapers_thread():
     total_scrapers = len(ALL_SCRAPERS)
     for idx, scraper in enumerate(ALL_SCRAPERS):
         brand_name = scraper.brand
-        SCRAPE_STATUS["message"] = f"{brand_name} taranıyor ({idx+1}/{total_scrapers})..."
+        SCRAPE_STATUS["message"] = f"{brand_name} taraniyor ({idx+1}/{total_scrapers})..."
         SCRAPE_STATUS["progress"] = int(((idx) / total_scrapers) * 100)
 
         try:
@@ -318,15 +324,15 @@ def _run_scrapers_thread():
             is_stale = method_used == "stale"
             if records and method_used != "failed":
                 inserted = save_records(conn, brand_name, records, method_used, 1 if is_stale else 0)
-                log_run(conn, brand_name, "fallback" if is_stale else "success", method_used, len(records), f"{inserted} yeni kayıt")
+                log_run(conn, brand_name, "fallback" if is_stale else "success", method_used, len(records), f"{inserted} yeni kayit")
             else:
-                log_run(conn, brand_name, "error", method_used, 0, "Veri bulunamadı")
+                log_run(conn, brand_name, "error", method_used, 0, "Veri bulunamadi")
         except Exception as exc:
             log_run(conn, brand_name, "error", "exception", 0, str(exc))
 
     conn.close()
     SCRAPE_STATUS["running"] = False
-    SCRAPE_STATUS["message"] = "Tarama tamamlandı!"
+    SCRAPE_STATUS["message"] = "Tarama tamamlandi!"
     SCRAPE_STATUS["progress"] = 100
     SCRAPE_STATUS["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -335,12 +341,15 @@ def _run_scrapers_thread():
 @login_required
 def trigger_scrape():
     global SCRAPE_STATUS
+    if session.get("user") != "admin":
+        return jsonify({"status": "error", "message": "Canli tarama baslatma yetkisi sadece Admin kullanicisindadir."}), 403
+
     if SCRAPE_STATUS["running"]:
         return jsonify({"status": "running", "message": "Zaten aktif bir tarama devam ediyor."})
 
     t = threading.Thread(target=_run_scrapers_thread)
     t.start()
-    return jsonify({"status": "started", "message": "Tarama arka planda başlatıldı."})
+    return jsonify({"status": "started", "message": "Tarama arka planda baslatildi."})
 
 
 @app.route("/api/export")
@@ -348,18 +357,23 @@ def trigger_scrape():
 def api_export():
     conn = get_db()
     rows = conn.execute("""
-        SELECT brand, model_name, variant, price_raw, price_int, currency,
-               source, is_stale, is_new_model, is_new_variant, price_diff, price_change_pct, scraped_at
-        FROM prices
-        ORDER BY brand, model_name, price_int
+        SELECT b.name as brand, m.name as model_name, v.name as variant,
+               p.price_raw, p.price_int, p.currency, p.source,
+               p.is_latest, p.is_new_model, p.is_new_variant, p.price_diff, p.price_change_pct, p.scraped_at
+        FROM prices p
+        JOIN variants v ON p.variant_id = v.id
+        JOIN models m ON v.model_id = m.id
+        JOIN brands b ON m.brand_id = b.id
+        WHERE p.is_latest = 1
+        ORDER BY b.name, m.name, p.price_int
     """).fetchall()
     conn.close()
 
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
     writer.writerow([
-        "Marka", "Model", "Varyant", "Fiyat Metni", "Fiyat (Sayı)", "Para Birimi",
-        "Kaynak", "Eski Veri mi?", "Yeni Model mi?", "Yeni Paket mi?", "Fiyat Değişim TL", "Fiyat Değişim %", "Tarih"
+        "Marka", "Model", "Varyant", "Fiyat Metni", "Fiyat (Sayi)", "Para Birimi",
+        "Kaynak", "En Guncel (Latest)?", "Yeni Model mi?", "Yeni Paket mi?", "Fiyat Degisim TL", "Fiyat Degisim %", "Tarih"
     ])
     for r in rows:
         writer.writerow(list(r))
@@ -374,7 +388,7 @@ def api_export():
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("  ÇOKLU MARKA ARAÇ FİYAT SCRAPER WEB PANELİ")
-    print("  Tarayıcıda açın: http://localhost:5000")
+    print("  COKLU MARKA ARAC FIYAT SCRAPER WEB PANELI")
+    print("  Tarayicida acin: http://localhost:5000")
     print("=" * 70)
     app.run(host="0.0.0.0", port=5000, debug=True)
