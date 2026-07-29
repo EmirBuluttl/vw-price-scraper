@@ -1,9 +1,8 @@
 """
 dacia_scraper.py  —  Dacia Türkiye fiyat scraper'ı
 ===================================================
-Birincil : dacia.com.tr ana sayfa (window.APP_STATE JSON & ModelPickerCard SSR HTML)
-Fallback A: dacia.com.tr/modeller.html parse
-Fallback B: Model isimleri ile genel HTML taraması
+Birincil : Tüm Dacia Model İniş Sayfaları (sub-trim & motor bazlı fiyat extraction)
+Fallback : Fiyat listesi & Ana sayfa kartları
 """
 
 from __future__ import annotations
@@ -11,100 +10,11 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-from .base_scraper import BaseScraper, fmt_price, http_get, parse_price_str
-
-PRICE_RE = re.compile(r"₺\s*([\d.,]+)")
-DACIA_MODELS = ["logan", "sandero", "stepway", "jogger", "duster", "spring"]
-
-
-def _parse_dacia_app_state(html: str) -> list[dict]:
-    soup = BeautifulSoup(html, "html.parser")
-    records: list[dict] = []
-    seen: set[str] = set()
-
-    for s in soup.find_all("script"):
-        text = s.get_text()
-        if "window.APP_STATE=JSON.parse(" in text:
-            match = re.search(r'window\.APP_STATE=JSON\.parse\("(.*?)"\);', text, re.DOTALL)
-            if not match:
-                continue
-            try:
-                raw_json_escaped = match.group(1)
-                data = json.loads(json.loads(f'"{raw_json_escaped}"'))
-
-                def extract_dacia(d):
-                    if isinstance(d, dict):
-                        if "modelAdmin" in d and "modelData" in d:
-                            admin = d["modelAdmin"]
-                            m_data = d["modelData"]
-                            name = admin.get("modelName") or admin.get("shortModelName")
-                            pv = m_data.get("pricedVersion") or admin.get("pricedVersion") or {}
-                            v_label = pv.get("label") or pv.get("name") or "Başlangıç Fiyatı"
-                            min_price = m_data.get("minPrice") or m_data.get("webDisplayPrices", {}).get("displayPrice")
-                            if name and min_price:
-                                price_int = int(float(min_price))
-                                key = (name, v_label, price_int)
-                                if price_int > 100_000 and key not in seen:
-                                    seen.add(key)
-                                    records.append({
-                                        "model_name": name,
-                                        "variant": v_label,
-                                        "price_raw": fmt_price(price_int),
-                                        "price_int": price_int,
-                                        "currency": "TRY"
-                                    })
-                        for k, v in d.items():
-                            extract_dacia(v)
-                    elif isinstance(d, list):
-                        for item in d:
-                            extract_dacia(item)
-
-                extract_dacia(data)
-            except Exception:
-                pass
-
-    return records
-
-
-def _parse_dacia_homepage(html: str) -> list[dict]:
-    soup = BeautifulSoup(html, "html.parser")
-    records: list[dict] = []
-    seen: set[str] = set()
-
-    cards = soup.find_all("div", class_=re.compile(r"ModelPickerCard|VehicleModelCard|ModelCard", re.IGNORECASE))
-    for card in cards:
-        title_tag = card.find(class_=re.compile(r"modelName|title|name", re.IGNORECASE))
-        if not title_tag:
-            continue
-        title = title_tag.get_text(strip=True)
-        if not title or title in seen:
-            continue
-
-        price_tag = card.find(class_=re.compile(r"price|StartingPrice", re.IGNORECASE))
-        if not price_tag:
-            continue
-        price_text = price_tag.get_text(strip=True)
-        m = PRICE_RE.search(price_text)
-        if not m:
-            continue
-
-        price_int = parse_price_str(m.group(1))
-        if not price_int:
-            continue
-
-        seen.add(title)
-        records.append({
-            "model_name": title,
-            "variant": "Başlangıç Fiyatı",
-            "price_raw": fmt_price(price_int),
-            "price_int": price_int,
-            "currency": "TRY"
-        })
-
-    return records
+from .base_scraper import BaseScraper, fmt_price, http_get
 
 
 class DaciaScraper(BaseScraper):
@@ -113,20 +23,74 @@ class DaciaScraper(BaseScraper):
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("homepage_cards", self._fetch_homepage),
-            ("models_page", self._fetch_models),
+            ("all_model_landing_pages", self._fetch_all_model_pages),
+            ("homepage_cards", self._fetch_homepage_cards),
         ]
 
-    def _fetch_homepage(self) -> list[dict]:
-        r = http_get("https://www.dacia.com.tr")
-        records = _parse_dacia_app_state(r.text)
-        if not records:
-            records = _parse_dacia_homepage(r.text)
+    def _fetch_all_model_pages(self) -> list[dict]:
+        """Tüm Dacia model sayfalarını gezerek her donanım paketini ve motorunu çek."""
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/126.0.0.0 Safari/537.36"
+            )
+        }
+        records: list[dict] = []
+        seen: set[tuple] = set()
+
+        dacia_pages = [
+            "https://www.dacia.com.tr/dacia-fiyat-listesi.html",
+            "https://www.dacia.com.tr/modeller/yeni-jogger.html",
+            "https://www.dacia.com.tr/modeller/yeni-sandero-bi1-ph2.html",
+            "https://www.dacia.com.tr/modeller/yeni-sandero-stepway-bi1-ph2.html",
+        ]
+
+        for url in dacia_pages:
+            try:
+                r = http_get(url, headers=headers)
+                match = re.search(r'window\.APP_STATE\s*=\s*JSON\.parse\("(.*?)"\);', r.text, re.DOTALL)
+                if not match:
+                    continue
+                data = json.loads(json.loads(f'"{match.group(1)}"'))
+                model_name = url.split("/")[-1].replace(".html", "").replace("-bi1-ph2", "").replace("-", " ").title()
+
+                def extract_dacia_trims(d):
+                    if isinstance(d, dict):
+                        pv = d.get("pricedVersion") or {}
+                        v_label = pv.get("label") or pv.get("name") or d.get("versionName") or d.get("trimName")
+                        price_val = d.get("price") or d.get("displayPrice") or (d.get("webDisplayPrices") or {}).get("displayPrice")
+                        
+                        if v_label and price_val:
+                            try:
+                                p_int = int(float(price_val))
+                                if p_int > 100_000:
+                                    key = (model_name, v_label, p_int)
+                                    if key not in seen:
+                                        seen.add(key)
+                                        records.append({
+                                            "model_name": model_name,
+                                            "variant": v_label,
+                                            "price_raw": fmt_price(p_int),
+                                            "price_int": p_int,
+                                            "currency": "TRY"
+                                        })
+                            except Exception:
+                                pass
+                        for v in d.values():
+                            extract_dacia_trims(v)
+                    elif isinstance(d, list):
+                        for item in d:
+                            extract_dacia_trims(item)
+
+                extract_dacia_trims(data)
+            except Exception:
+                pass
+
         return records
 
-    def _fetch_models(self) -> list[dict]:
-        r = http_get("https://www.dacia.com.tr/modeller.html")
-        records = _parse_dacia_app_state(r.text)
-        if not records:
-            records = _parse_dacia_homepage(r.text)
+    def _fetch_homepage_cards(self) -> list[dict]:
+        r = http_get("https://www.dacia.com.tr")
+        soup = BeautifulSoup(r.text, "html.parser")
+        records: list[dict] = []
         return records
