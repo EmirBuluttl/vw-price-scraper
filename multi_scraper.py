@@ -148,7 +148,7 @@ def main() -> None:
             if records and not is_failed:
                 inserted = save_records(
                     conn,
-                    brand=scraper.brand,
+                    brand_name=scraper.brand,
                     records=records,
                     source=method_used,
                     is_stale=1 if is_stale else 0,
