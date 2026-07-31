@@ -1,56 +1,101 @@
 /* ==========================================================================
-   Araç Fiyat Takip & Otomasyon Dashboard — Frontend JS App
+   Kurumsal Araç Fiyat Takip & Analiz Dashboard — Frontend JS App
    ========================================================================== */
 
 document.addEventListener("DOMContentLoaded", () => {
     // State
+    let currentGroup = "all";
     let currentBrand = "all";
+    let currentModel = "all";
     let searchQuery = "";
-    let onlyNew = false;
-    let onlyChanges = false;
+    let fuelFilter = "all";
+    let bodyFilter = "all";
+    let transFilter = "all";
+    let statusFilter = "all";
+    let minPrice = null;
+    let maxPrice = null;
     let sortBy = "price_asc";
     let pollInterval = null;
 
     // DOM Elements
     const statTotalModels = document.getElementById("stat-total-models");
+    const statBrandsCnt = document.getElementById("stat-brands-cnt");
     const statNewModels = document.getElementById("stat-new-models");
     const statNewVariants = document.getElementById("stat-new-variants");
     const statPriceChanges = document.getElementById("stat-price-changes");
 
+    const oemTabs = document.querySelectorAll("#oem-group-pills .oem-tab");
     const brandPills = document.querySelectorAll("#brand-pills .pill-btn");
+    const modelSubsectionBar = document.getElementById("model-subsection-bar");
+    const modelPillsContainer = document.getElementById("model-pills-container");
+
     const inputSearch = document.getElementById("input-search");
     const btnClearSearch = document.getElementById("btn-clear-search");
-    const chkOnlyNew = document.getElementById("chk-only-new");
-    const chkOnlyChanges = document.getElementById("chk-only-changes");
+    const inputMinPrice = document.getElementById("input-min-price");
+    const inputMaxPrice = document.getElementById("input-max-price");
+    const selectStatus = document.getElementById("select-status");
+    const selectFuel = document.getElementById("select-fuel");
+    const selectBody = document.getElementById("select-body");
     const selectSort = document.getElementById("select-sort");
-    
+
     const tbodyPrices = document.getElementById("tbody-prices");
     const lblRecordsCount = document.getElementById("lbl-records-count");
-    
+
     const btnTriggerScrape = document.getElementById("btn-trigger-scrape");
     const scrapeModal = document.getElementById("scrape-modal");
     const modalScrapeMsg = document.getElementById("modal-scrape-msg");
     const modalProgressBar = document.getElementById("modal-progress-bar");
 
+    // Price History Modal Elements
+    const historyModal = document.getElementById("price-history-modal");
+    const historyModalTitle = document.getElementById("history-modal-title");
+    const historyModalSubtitle = document.getElementById("history-modal-subtitle");
+    const historyTimelineContainer = document.getElementById("history-timeline-container");
+    const btnCloseHistoryModal = document.getElementById("btn-close-history-modal");
+
     // Initial Data Fetch
     fetchSummary();
     fetchPrices();
 
-    // Event Listeners
+    // Event Listeners: OEM Group Tabs
+    oemTabs.forEach(tab => {
+        tab.addEventListener("click", () => {
+            oemTabs.forEach(t => t.classList.remove("active"));
+            tab.classList.add("active");
+            currentGroup = tab.dataset.group;
+            currentBrand = "all";
+            currentModel = "all";
+
+            // Update Brand Pills active status
+            brandPills.forEach(p => {
+                if (p.dataset.brand === "all") p.classList.add("active");
+                else p.classList.remove("active");
+            });
+
+            loadModelSubsection();
+            fetchPrices();
+        });
+    });
+
+    // Event Listeners: Brand Pills
     brandPills.forEach(pill => {
         pill.addEventListener("click", () => {
             brandPills.forEach(p => p.classList.remove("active"));
             pill.classList.add("active");
             currentBrand = pill.dataset.brand;
+            currentModel = "all";
+
+            loadModelSubsection();
             fetchPrices();
         });
     });
 
+    // Search Input Debounce
     let searchDebounceTimeout = null;
     inputSearch.addEventListener("input", (e) => {
         searchQuery = e.target.value.trim();
         btnClearSearch.style.display = searchQuery ? "block" : "none";
-        
+
         clearTimeout(searchDebounceTimeout);
         searchDebounceTimeout = setTimeout(() => {
             fetchPrices();
@@ -64,15 +109,39 @@ document.addEventListener("DOMContentLoaded", () => {
         fetchPrices();
     });
 
-    chkOnlyNew.addEventListener("change", (e) => {
-        onlyNew = e.target.checked;
+    // Min / Max Price Filter Inputs
+    let priceRangeDebounce = null;
+    const handlePriceRangeChange = () => {
+        clearTimeout(priceRangeDebounce);
+        priceRangeDebounce = setTimeout(() => {
+            minPrice = inputMinPrice.value ? parseInt(inputMinPrice.value, 10) : null;
+            maxPrice = inputMaxPrice.value ? parseInt(inputMaxPrice.value, 10) : null;
+            fetchPrices();
+        }, 350);
+    };
+
+    inputMinPrice.addEventListener("input", handlePriceRangeChange);
+    inputMaxPrice.addEventListener("input", handlePriceRangeChange);
+
+    // Select Filters
+    selectStatus.addEventListener("change", (e) => {
+        statusFilter = e.target.value;
         fetchPrices();
     });
 
-    chkOnlyChanges.addEventListener("change", (e) => {
-        onlyChanges = e.target.checked;
-        fetchPrices();
-    });
+    if (selectFuel) {
+        selectFuel.addEventListener("change", (e) => {
+            fuelFilter = e.target.value;
+            fetchPrices();
+        });
+    }
+
+    if (selectBody) {
+        selectBody.addEventListener("change", (e) => {
+            bodyFilter = e.target.value;
+            fetchPrices();
+        });
+    }
 
     selectSort.addEventListener("change", (e) => {
         sortBy = e.target.value;
@@ -83,6 +152,19 @@ document.addEventListener("DOMContentLoaded", () => {
         startScrape();
     });
 
+    if (btnCloseHistoryModal) {
+        btnCloseHistoryModal.addEventListener("click", () => {
+            historyModal.classList.add("hidden");
+        });
+    }
+
+    // Modal click outside to close
+    historyModal.addEventListener("click", (e) => {
+        if (e.target === historyModal) {
+            historyModal.classList.add("hidden");
+        }
+    });
+
     // ─── API Fetch Functions ───────────────────────────────────────────────
 
     async function fetchSummary() {
@@ -90,88 +172,119 @@ document.addEventListener("DOMContentLoaded", () => {
             const res = await fetch("/api/summary");
             if (!res.ok) return;
             const data = await res.json();
-            
+
             if (statTotalModels) statTotalModels.textContent = data.total_models || "0";
+            if (statBrandsCnt) statBrandsCnt.textContent = data.brands ? data.brands.length : "10";
             if (statNewModels) statNewModels.textContent = data.new_models_cnt || "0";
             if (statNewVariants) statNewVariants.textContent = data.new_variants_cnt || "0";
             if (statPriceChanges) statPriceChanges.textContent = data.price_changes_cnt || "0";
 
             if (data.scrape_status && data.scrape_status.running) {
                 showScrapeModal(data.scrape_status.message, data.scrape_status.progress);
-                startStatusPolling();
+                startPollingScrapeStatus();
             }
         } catch (err) {
-            console.error("fetchSummary error:", err);
+            console.error("Summary fetch error:", err);
         }
     }
 
-    let selectedFuel = "all";
-    let selectedBody = "all";
+    async function loadModelSubsection() {
+        if (currentBrand === "all" && currentGroup === "all") {
+            modelSubsectionBar.classList.add("hidden");
+            return;
+        }
 
-    const selectFuel = document.getElementById("select-fuel");
-    const selectBody = document.getElementById("select-body");
+        try {
+            const url = new URL("/api/models", window.location.origin);
+            if (currentBrand !== "all") url.searchParams.append("brand", currentBrand);
+            if (currentGroup !== "all") url.searchParams.append("group", currentGroup);
 
-    if (selectFuel) {
-        selectFuel.addEventListener("change", (e) => {
-            selectedFuel = e.target.value;
-            fetchPrices();
-        });
-    }
+            const res = await fetch(url);
+            if (!res.ok) return;
+            const data = await res.json();
 
-    if (selectBody) {
-        selectBody.addEventListener("change", (e) => {
-            selectedBody = e.target.value;
-            fetchPrices();
-        });
+            if (data.models && data.models.length > 0) {
+                modelSubsectionBar.classList.remove("hidden");
+                modelPillsContainer.innerHTML = "";
+
+                // "Tüm Modeller" pill
+                const allPill = document.createElement("button");
+                allPill.className = `sub-pill-btn ${currentModel === "all" ? "active" : ""}`;
+                allPill.textContent = "Tüm Modeller";
+                allPill.addEventListener("click", () => {
+                    document.querySelectorAll(".sub-pill-btn").forEach(p => p.classList.remove("active"));
+                    allPill.classList.add("active");
+                    currentModel = "all";
+                    fetchPrices();
+                });
+                modelPillsContainer.appendChild(allPill);
+
+                // Add model pills
+                data.models.forEach(m => {
+                    const pill = document.createElement("button");
+                    pill.className = `sub-pill-btn ${currentModel === m.model_name ? "active" : ""}`;
+                    pill.textContent = m.model_name;
+                    pill.addEventListener("click", () => {
+                        document.querySelectorAll(".sub-pill-btn").forEach(p => p.classList.remove("active"));
+                        pill.classList.add("active");
+                        currentModel = m.model_name;
+                        fetchPrices();
+                    });
+                    modelPillsContainer.appendChild(pill);
+                });
+            } else {
+                modelSubsectionBar.classList.add("hidden");
+            }
+        } catch (err) {
+            console.error("Model subsection fetch error:", err);
+        }
     }
 
     async function fetchPrices() {
-        tbodyPrices.innerHTML = `
-            <tr>
-                <td colspan="7" class="text-center py-4">
-                    <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
-                    <p class="mt-2">Veriler yükleniyor...</p>
-                </td>
-            </tr>
-        `;
-
         try {
-            const params = new URLSearchParams({
-                brand: currentBrand,
-                search: searchQuery,
-                fuel: selectedFuel,
-                body: selectedBody,
-                only_new: onlyNew,
-                only_changes: onlyChanges,
-                sort: sortBy
-            });
+            const url = new URL("/api/prices", window.location.origin);
+            if (currentGroup !== "all") url.searchParams.append("group", currentGroup);
+            if (currentBrand !== "all") url.searchParams.append("brand", currentBrand);
+            if (currentModel !== "all") url.searchParams.append("model", currentModel);
+            if (searchQuery) url.searchParams.append("search", searchQuery);
+            if (fuelFilter !== "all") url.searchParams.append("fuel", fuelFilter);
+            if (bodyFilter !== "all") url.searchParams.append("body", bodyFilter);
+            if (transFilter !== "all") url.searchParams.append("trans", transFilter);
+            if (statusFilter !== "all") url.searchParams.append("status", statusFilter);
+            if (minPrice) url.searchParams.append("min_price", minPrice);
+            if (maxPrice) url.searchParams.append("max_price", maxPrice);
 
-            const res = await fetch(`/api/prices?${params}`);
-            if (!res.ok) throw new Error("API hatası");
+            url.searchParams.append("sort", sortBy);
+
+            lblRecordsCount.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Yükleniyor...`;
+
+            const res = await fetch(url);
+            if (!res.ok) throw new Error("Fiyatlar çekilemedi");
             const data = await res.json();
 
-            lblRecordsCount.textContent = `${data.total} kayıt bulundu (${data.target_date || ''})`;
-            renderTable(data.prices);
+            renderPricesTable(data.prices || []);
+            lblRecordsCount.textContent = `${data.total || 0} Araç Listeleniyor (${data.target_date || 'En Güncel'})`;
         } catch (err) {
-            console.error("fetchPrices error:", err);
+            console.error("Prices fetch error:", err);
             tbodyPrices.innerHTML = `
                 <tr>
-                    <td colspan="7" class="text-center py-4 text-danger">
+                    <td colspan="8" class="text-center text-danger py-4">
                         <i class="fa-solid fa-triangle-exclamation fa-2x"></i>
                         <p class="mt-2">Veriler yüklenirken hata oluştu.</p>
                     </td>
                 </tr>
             `;
+            lblRecordsCount.textContent = "Hata";
         }
     }
 
-    function renderTable(prices) {
+    function renderPricesTable(prices) {
         if (!prices || prices.length === 0) {
             tbodyPrices.innerHTML = `
                 <tr>
-                    <td colspan="7" class="text-center py-4 text-muted">
-                        <i class="fa-solid fa-magnifying-glass fa-2x mb-2"></i>
-                        <p>Kriterlere uygun araç kaydı bulunamadı.</p>
+                    <td colspan="8" class="text-center py-4 text-muted">
+                        <i class="fa-solid fa-magnifying-glass fa-2x"></i>
+                        <p class="mt-2">Kriterlere uygun araç bulunamadı.</p>
                     </td>
                 </tr>
             `;
@@ -179,89 +292,131 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         let html = "";
-        prices.forEach(r => {
-            const brand = r.brand || "—";
-            const modelName = r.model_name || "—";
-            const variant = r.variant || "—";
-            const priceRaw = r.price_raw || "—";
-            const source = r.source || "—";
-
-            const fuel = r.fuel_type || "Benzin";
-            const trans = r.transmission || "Otomatik";
-            const body = r.body_type || "Binek";
-            const hp = r.engine_power || "";
-
-            let attrHtml = `<span class="attr-pill"><i class="fa-solid fa-gas-pump"></i> ${fuel}</span> ` +
-                           `<span class="attr-pill"><i class="fa-solid fa-car"></i> ${body}</span> ` +
-                           `<span class="attr-pill"><i class="fa-solid fa-gear"></i> ${trans}</span>`;
-            if (hp) {
-                attrHtml += ` <span class="attr-pill"><i class="fa-solid fa-bolt"></i> ${hp}</span>`;
-            }
-
-            // Rozetler
+        prices.forEach(item => {
+            // Badges
             let badgesHtml = "";
-            if (r.is_new_model === 1) {
-                badgesHtml += `<span class="badge-new-model"><i class="fa-solid fa-wand-magic-sparkles"></i> YENİ MODEL</span> `;
+            if (item.is_new_model) {
+                badgesHtml += `<span class="badge badge-gold" title="Markaya Yeni Eklenen Araç Modeli">✨ YENİ MODEL</span> `;
             }
-            if (r.is_new_variant === 1) {
-                badgesHtml += `<span class="badge-new-variant"><i class="fa-solid fa-star"></i> YENİ PAKET</span> `;
+            if (item.is_new_variant) {
+                badgesHtml += `<span class="badge badge-emerald" title="Modele Yeni Eklenen Donanım Paketi">🏷️ YENİ PAKET</span> `;
             }
-            if (r.price_diff && r.price_diff !== 0) {
-                const diffFmt = new Intl.NumberFormat('tr-TR').format(Math.abs(r.price_diff));
-                if (r.price_diff > 0) {
-                    badgesHtml += `<span class="badge-price-up" title="Önceki Fiyat: ${new Intl.NumberFormat('tr-TR').format(r.previous_price_int)} TL"><i class="fa-solid fa-arrow-trend-up"></i> +${diffFmt} TL (%${r.price_change_pct})</span> `;
-                } else {
-                    badgesHtml += `<span class="badge-price-down" title="Önceki Fiyat: ${new Intl.NumberFormat('tr-TR').format(r.previous_price_int)} TL"><i class="fa-solid fa-arrow-trend-down"></i> -${diffFmt} TL (%${r.price_change_pct})</span> `;
-                }
+
+            let diffHtml = "-";
+            if (item.price_diff > 0) {
+                diffHtml = `<span class="price-diff diff-up" title="Önceki Fiyat: ${formatMoney(item.previous_price_int)}"><i class="fa-solid fa-arrow-up"></i> +${formatMoney(item.price_diff)} (+%${item.price_change_pct})</span>`;
+            } else if (item.price_diff < 0) {
+                diffHtml = `<span class="price-diff diff-down" title="Önceki Fiyat: ${formatMoney(item.previous_price_int)}"><i class="fa-solid fa-arrow-down"></i> ${formatMoney(item.price_diff)} (%${item.price_change_pct})</span>`;
+            } else {
+                diffHtml = `<span class="price-diff diff-neutral">Sabit</span>`;
             }
-            if (r.is_stale === 1) {
-                badgesHtml += `<span class="badge-stale" title="Eski veriden kurtarıldı"><i class="fa-solid fa-clock-rotate-left"></i> STALE</span> `;
-            }
+
+            // Attributes
+            let attrHtml = "";
+            if (item.fuel_type) attrHtml += `<span class="attr-pill attr-fuel">${item.fuel_type}</span> `;
+            if (item.body_type) attrHtml += `<span class="attr-pill attr-body">${item.body_type}</span> `;
+            if (item.transmission) attrHtml += `<span class="attr-pill attr-trans">${item.transmission}</span> `;
+            if (item.engine_power) attrHtml += `<span class="attr-pill attr-hp">${item.engine_power}</span>`;
+
+            // Scraped Date Timestamp
+            let dateStr = item.scraped_at ? item.scraped_at.replace("T", " ") : (item.scraped_date || "-");
 
             html += `
-                <tr>
-                    <td><span class="brand-badge">${brand}</span></td>
-                    <td class="model-name">${modelName}</td>
-                    <td class="variant-name">${variant}</td>
-                    <td>${attrHtml}</td>
-                    <td class="price-text">${priceRaw}</td>
-                    <td>${badgesHtml || '<span class="text-subtle">-</span>'}</td>
-                    <td><span class="source-tag">${source}</span></td>
+                <tr class="price-row" data-variant-id="${item.variant_id}">
+                    <td><span class="brand-badge brand-${(item.brand || '').toLowerCase().replace(/\s+/g, '')}">${item.brand}</span></td>
+                    <td class="font-bold text-main">${item.model_name}</td>
+                    <td class="variant-name">${item.variant}</td>
+                    <td>${attrHtml || '-'}</td>
+                    <td class="price-val">${formatMoney(item.price_int)}</td>
+                    <td>${badgesHtml} ${diffHtml}</td>
+                    <td><span class="date-badge"><i class="fa-regular fa-clock"></i> ${dateStr}</span></td>
+                    <td>
+                        <button class="btn-history-view" data-variant-id="${item.variant_id}" title="Fiyat Geçmişi & Grafiğini Gör">
+                            <i class="fa-solid fa-clock-rotate-left"></i> Geçmiş
+                        </button>
+                    </td>
                 </tr>
             `;
         });
 
         tbodyPrices.innerHTML = html;
+
+        // Attach event listeners for history modal buttons
+        document.querySelectorAll(".btn-history-view").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const variantId = btn.dataset.variantId;
+                openPriceHistoryModal(variantId);
+            });
+        });
     }
 
-    // ─── Scrape Trigger & Polling ─────────────────────────────────────────
+    async function openPriceHistoryModal(variantId) {
+        try {
+            historyTimelineContainer.innerHTML = `<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p class="mt-2">Geçmiş yükleniyor...</p></div>`;
+            historyModal.classList.remove("hidden");
+
+            const res = await fetch(`/api/variant/${variantId}/history`);
+            if (!res.ok) throw new Error("Geçmiş çekilemedi");
+            const data = await res.json();
+
+            const v = data.variant;
+            historyModalTitle.textContent = `${v.brand} ${v.model_name}`;
+            historyModalSubtitle.textContent = `${v.variant} (${v.fuel_type || ''} ${v.transmission || ''})`;
+
+            const history = data.history || [];
+            if (history.length === 0) {
+                historyTimelineContainer.innerHTML = `<p class="text-muted text-center py-4">Bu araç için geçmiş kayıt bulunamadı.</p>`;
+                return;
+            }
+
+            let timelineHtml = `<div class="timeline-list">`;
+            history.forEach((h, idx) => {
+                let badge = `<span class="badge badge-neutral">Sabit</span>`;
+                if (h.price_diff > 0) {
+                    badge = `<span class="badge badge-coral">+${formatMoney(h.price_diff)} (+%${h.price_change_pct})</span>`;
+                } else if (h.price_diff < 0) {
+                    badge = `<span class="badge badge-emerald">${formatMoney(h.price_diff)} (%${h.price_change_pct})</span>`;
+                } else if (idx === 0) {
+                    badge = `<span class="badge badge-blue">İlk Çekilen Fiyat</span>`;
+                }
+
+                timelineHtml += `
+                    <div class="timeline-item">
+                        <div class="timeline-date"><i class="fa-regular fa-calendar-check"></i> ${h.scraped_date} (${h.scraped_at ? h.scraped_at.split('T')[1] : ''})</div>
+                        <div class="timeline-price">${formatMoney(h.price_int)}</div>
+                        <div class="timeline-status">${badge}</div>
+                    </div>
+                `;
+            });
+            timelineHtml += `</div>`;
+
+            historyTimelineContainer.innerHTML = timelineHtml;
+        } catch (err) {
+            console.error("History modal error:", err);
+            historyTimelineContainer.innerHTML = `<p class="text-danger text-center py-4">Geçmiş veriler yüklenirken hata oluştu.</p>`;
+        }
+    }
+
+    // ─── Live Scraper & Polling ───────────────────────────────────────────
 
     async function startScrape() {
         try {
             const res = await fetch("/api/trigger-scrape", { method: "POST" });
             const data = await res.json();
-            showScrapeModal(data.message, 5);
-            startStatusPolling();
+
+            if (data.status === "started" || data.status === "running") {
+                showScrapeModal(data.message, 0);
+                startPollingScrapeStatus();
+            } else if (data.status === "error") {
+                alert(data.message);
+            }
         } catch (err) {
-            alert("Tarama başlatılırken hata oluştu: " + err);
+            alert("Tarama başlatılırken hata oluştu!");
         }
     }
 
-    function showScrapeModal(msg, progress) {
-        scrapeModal.classList.remove("hidden");
-        modalScrapeMsg.textContent = msg || "Tüm markalar taranıyor...";
-        modalProgressBar.style.width = `${progress || 0}%`;
-    }
-
-    function hideScrapeModal() {
-        scrapeModal.classList.add("hidden");
-        if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-        }
-    }
-
-    function startStatusPolling() {
+    function startPollingScrapeStatus() {
         if (pollInterval) clearInterval(pollInterval);
 
         pollInterval = setInterval(async () => {
@@ -269,18 +424,41 @@ document.addEventListener("DOMContentLoaded", () => {
                 const res = await fetch("/api/summary");
                 if (!res.ok) return;
                 const data = await res.json();
-                const status = data.scrape_status;
 
-                if (status && status.running) {
+                const status = data.scrape_status;
+                if (status) {
                     showScrapeModal(status.message, status.progress);
-                } else {
-                    hideScrapeModal();
-                    fetchSummary();
-                    fetchPrices();
+                    if (!status.running) {
+                        clearInterval(pollInterval);
+                        setTimeout(() => {
+                            hideScrapeModal();
+                            fetchSummary();
+                            fetchPrices();
+                        }, 1000);
+                    }
                 }
             } catch (err) {
-                console.error("polling error:", err);
+                console.error("Polling error:", err);
             }
         }, 1500);
+    }
+
+    function showScrapeModal(msg, progress) {
+        modalScrapeMsg.textContent = msg || "Taranıyor...";
+        modalProgressBar.style.width = `${progress || 0}%`;
+        scrapeModal.classList.remove("hidden");
+    }
+
+    function hideScrapeModal() {
+        scrapeModal.classList.add("hidden");
+    }
+
+    function formatMoney(amount) {
+        if (amount === null || amount === undefined) return "-";
+        return new Intl.NumberFormat("tr-TR", {
+            style: "currency",
+            currency: "TRY",
+            maximumFractionDigits: 0
+        }).format(amount);
     }
 });

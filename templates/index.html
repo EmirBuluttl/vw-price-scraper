@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Araç Fiyat Takip & Otomasyon Dashboard{% endblock %}
+{% block title %}Kurumsal Araç Fiyat Takip & Analiz Dashboard{% endblock %}
 
 {% block content %}
 <div class="dashboard-container">
@@ -11,8 +11,8 @@
                 <i class="fa-solid fa-car"></i>
             </div>
             <div class="brand-text">
-                <h1>Araç Fiyat Takip <span class="badge-live">Canlı Veri</span></h1>
-                <p>8 Marka Donanım & Fiyat Otomasyon Sistemi</p>
+                <h1>Araç Fiyat Takip <span class="badge-live">Kurumsal Sürüm</span></h1>
+                <p>Çoklu Marka Fiyat Takip, Zaman Çizelgesi & Analiz Portalı</p>
             </div>
         </div>
 
@@ -21,8 +21,8 @@
                 <i class="fa-solid fa-arrows-rotate"></i> <span>Taramayı Başlat</span>
             </button>
 
-            <a href="{{ url_for('api_export') }}" class="btn btn-outline" title="Excel / CSV Olarak İndir">
-                <i class="fa-solid fa-file-csv"></i> <span>CSV İndir</span>
+            <a href="{{ url_for('api_export_excel') }}" class="btn btn-success" title="Biçimlendirilmiş Excel İndir">
+                <i class="fa-solid fa-file-excel"></i> <span>Excel İndir (.xlsx)</span>
             </a>
 
             <a href="{{ url_for('logout') }}" class="btn btn-icon-only" title="Çıkış Yap">
@@ -44,8 +44,8 @@
         <div class="stat-card glass-panel">
             <div class="stat-icon icon-purple"><i class="fa-solid fa-tags"></i></div>
             <div class="stat-data">
-                <span class="stat-value" id="stat-brands-cnt">8</span>
-                <span class="stat-label">Aktif Marka (VW, Ford, Hyundai, ...)</span>
+                <span class="stat-value" id="stat-brands-cnt">10</span>
+                <span class="stat-label">Aktif Marka (Fiat, VW, Ford, Kia...)</span>
             </div>
         </div>
 
@@ -74,22 +74,43 @@
         </div>
     </section>
 
-    <!-- Filter & Search Controls Bar -->
+    <!-- OEM Group & Brand Filter Controls Section -->
     <section class="controls-section glass-panel">
+        <!-- OEM Group Tabs -->
+        <div class="oem-group-pills" id="oem-group-pills">
+            <button class="oem-tab active" data-group="all">🌐 Tüm Gruplar</button>
+            <button class="oem-tab" data-group="tofas">🏢 Tofaş Grubu (Fiat)</button>
+            <button class="oem-tab" data-group="dogus">🏢 Doğuş Grubu (VW, Skoda)</button>
+            <button class="oem-tab" data-group="renault_group">🏢 Renault Grubu (Renault, Dacia)</button>
+            <button class="oem-tab" data-group="other">🚗 Diğer Markalar (Ford, Kia, Toyota...)</button>
+        </div>
+
+        <!-- Brand Selector Bar -->
         <div class="brand-filter-pills" id="brand-pills">
             <button class="pill-btn active" data-brand="all">
-                <i class="fa-solid fa-globe"></i> Tümü
+                <i class="fa-solid fa-globe"></i> Tüm Markalar
             </button>
+            <button class="pill-btn" data-brand="Fiat">Fiat (Tofaş)</button>
             <button class="pill-btn" data-brand="Volkswagen">VW</button>
             <button class="pill-btn" data-brand="Skoda">Skoda</button>
             <button class="pill-btn" data-brand="Renault">Renault</button>
             <button class="pill-btn" data-brand="Ford">Ford</button>
+            <button class="pill-btn" data-brand="Kia">Kia</button>
             <button class="pill-btn" data-brand="Hyundai">Hyundai</button>
             <button class="pill-btn" data-brand="Toyota">Toyota</button>
             <button class="pill-btn" data-brand="Chery">Chery</button>
             <button class="pill-btn" data-brand="Dacia">Dacia</button>
         </div>
 
+        <!-- Dynamic Model Subsection Bar (Marka seçilince beliren alt modeller) -->
+        <div class="model-subsection-bar hidden" id="model-subsection-bar">
+            <span class="subsection-title"><i class="fa-solid fa-layer-group"></i> Modeller:</span>
+            <div class="model-pills-container" id="model-pills-container">
+                <!-- JavaScript ile dinamik dolacak -->
+            </div>
+        </div>
+
+        <!-- Advanced Filter Controls Row -->
         <div class="filter-controls-row">
             <div class="search-box">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
@@ -97,18 +118,21 @@
                 <button id="btn-clear-search" class="btn-clear"><i class="fa-solid fa-xmark"></i></button>
             </div>
 
-            <div class="toggle-group">
-                <label class="toggle-switch" title="Sadece Sisteme Yeni Eklenen Model/Paketleri Göster">
-                    <input type="checkbox" id="chk-only-new">
-                    <span class="slider"></span>
-                    <span class="toggle-label"><i class="fa-solid fa-sparkles"></i> Sadece Yeniler</span>
-                </label>
+            <!-- Min/Max Price Inputs -->
+            <div class="price-range-inputs">
+                <input type="number" id="input-min-price" placeholder="Min TL" min="0" step="50000">
+                <span class="range-sep">-</span>
+                <input type="number" id="input-max-price" placeholder="Max TL" min="0" step="50000">
+            </div>
 
-                <label class="toggle-switch" title="Sadece Fiyat Değişikliği Olan Araçları Göster">
-                    <input type="checkbox" id="chk-only-changes">
-                    <span class="slider"></span>
-                    <span class="toggle-label"><i class="fa-solid fa-arrow-trend-up"></i> Fiyat Değişenler</span>
-                </label>
+            <!-- Quick Status Filters -->
+            <div class="select-wrapper">
+                <select id="select-status" title="Durum Filtresi">
+                    <option value="all">🎯 Tüm Durumlar</option>
+                    <option value="new">✨ Sadece Yeni Eklenecekler</option>
+                    <option value="drop">🔻 Sadece Fiyatı Düşenler</option>
+                    <option value="rise">🔺 Sadece Zam Gelenler</option>
+                </select>
             </div>
 
             <div class="sort-selector">
@@ -131,8 +155,10 @@
                 <select id="select-sort" title="Sıralama">
                     <option value="price_asc">Fiyat: Düşükten Yükseğe</option>
                     <option value="price_desc">Fiyat: Yüksekten Düşüğe</option>
-                    <option value="brand">Markaya Göre Sırala</option>
-                    <option value="model">Modele Göre Sırala</option>
+                    <option value="diff_asc">En Çok Düşenler</option>
+                    <option value="diff_desc">En Çok Artanlar</option>
+                    <option value="brand">Markaya Göre</option>
+                    <option value="model">Modele Göre</option>
                 </select>
             </div>
         </div>
@@ -154,16 +180,14 @@
                         <th>Donanım Paketi & Motor</th>
                         <th>Özellikler (Yakıt / Kasa / Vites)</th>
                         <th>Güncel Fiyat</th>
-                        <th>Değişim & Durum Rozetleri</th>
-                        <th>Kaynak</th>
-                    </tr>
-                </thead>
-                        <th>Kaynak</th>
+                        <th>Değişim & Durum</th>
+                        <th>Çekilme Tarihi</th>
+                        <th>Detay / Geçmiş</th>
                     </tr>
                 </thead>
                 <tbody id="tbody-prices">
                     <tr>
-                        <td colspan="6" class="text-center py-4">
+                        <td colspan="8" class="text-center py-4">
                             <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
                             <p class="mt-2">Veriler yükleniyor...</p>
                         </td>
@@ -172,6 +196,24 @@
             </table>
         </div>
     </section>
+</div>
+
+<!-- Price History & Timeline Modal -->
+<div id="price-history-modal" class="modal-backdrop hidden">
+    <div class="history-modal-card glass-panel">
+        <div class="modal-header">
+            <div>
+                <h3 id="history-modal-title">Araç Fiyat Geçmişi & Zaman Çizelgesi</h3>
+                <p id="history-modal-subtitle" class="sub-text"></p>
+            </div>
+            <button id="btn-close-history-modal" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="history-timeline" id="history-timeline-container">
+                <!-- JavaScript ile dolacak -->
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Live Scraper Modal Overlay -->
