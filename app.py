@@ -45,6 +45,10 @@ from scrapers.chery_scraper import CheryScraper
 from scrapers.dacia_scraper import DaciaScraper
 from scrapers.kia_scraper import KiaScraper
 from scrapers.fiat_scraper import FiatScraper
+from scrapers.peugeot_scraper import PeugeotScraper
+from scrapers.opel_scraper import OpelScraper
+from scrapers.citroen_scraper import CitroenScraper
+from scrapers.jeep_scraper import JeepScraper
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "car_price_scraper_secret_key_2026")
@@ -62,16 +66,20 @@ ALL_SCRAPERS = [
     DaciaScraper(),
     KiaScraper(),
     FiatScraper(),
+    PeugeotScraper(),
+    OpelScraper(),
+    CitroenScraper(),
+    JeepScraper(),
 ]
 
 SCRAPER_MAP = {s.brand.lower(): s for s in ALL_SCRAPERS}
 SCRAPE_STATUS = {"running": False, "message": "Bosta", "progress": 0, "last_run": None}
 
+# Tofaş Grubu Distribütörlük Kapsamı (Stellantis & Tofaş OEM)
 OEM_GROUPS = {
-    "tofas": ["Fiat", "Alfa Romeo", "Jeep"],
-    "dogus": ["Volkswagen", "Skoda", "Audi", "SEAT"],
-    "renault_group": ["Renault", "Dacia"],
-    "other": ["Ford", "Hyundai", "Toyota", "Kia", "Chery"],
+    "tofas": [
+        "Fiat", "Peugeot", "Opel", "Citroën", "DS Automobiles", "Alfa Romeo", "Jeep", "Maserati"
+    ],
 }
 
 
@@ -236,6 +244,38 @@ def api_summary():
     })
 
 
+@app.route("/api/brands")
+@login_required
+def api_brands():
+    """Aktif markalarin ve araç sayilarinin detayli listesini getirir."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT b.name as brand,
+               COUNT(DISTINCT m.id) as model_cnt,
+               SUM(CASE WHEN p.is_latest = 1 THEN 1 ELSE 0 END) as active_vehicle_cnt
+        FROM brands b
+        LEFT JOIN models m ON m.brand_id = b.id
+        LEFT JOIN variants v ON v.model_id = m.id
+        LEFT JOIN prices p ON p.variant_id = v.id
+        GROUP BY b.id, b.name
+        HAVING active_vehicle_cnt > 0
+        ORDER BY b.name ASC
+    """).fetchall()
+    conn.close()
+
+    tofas_set = set(OEM_GROUPS["tofas"])
+    brand_list = []
+    for r in rows:
+        d = dict(r)
+        d["is_tofas_group"] = d["brand"] in tofas_set
+        brand_list.append(d)
+
+    return jsonify({
+        "brands": brand_list,
+        "tofas_brands": OEM_GROUPS["tofas"]
+    })
+
+
 @app.route("/api/models")
 @login_required
 def api_models():
@@ -381,7 +421,6 @@ def api_prices():
     result_list = []
     for r in rows:
         d = dict(r)
-        # UI'da teknik API ismi yerine kurumsal rozet kullanilir
         d["source_label"] = "Resmi Distribütör Liste Fiyatı"
         result_list.append(d)
 

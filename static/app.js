@@ -19,6 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // DOM Elements
     const statTotalModels = document.getElementById("stat-total-models");
+    const statBrandsCard = document.getElementById("stat-brands-card");
     const statBrandsCnt = document.getElementById("stat-brands-cnt");
     const statNewModels = document.getElementById("stat-new-models");
     const statNewVariants = document.getElementById("stat-new-variants");
@@ -26,6 +27,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const oemTabs = document.querySelectorAll("#oem-group-pills .oem-tab");
     const brandPills = document.querySelectorAll("#brand-pills .pill-btn");
+    const tofasBrandsSubsection = document.getElementById("tofas-brands-subsection");
+    const tofasPills = document.querySelectorAll("#tofas-pills-container .pill-btn");
     const modelSubsectionBar = document.getElementById("model-subsection-bar");
     const modelPillsContainer = document.getElementById("model-pills-container");
 
@@ -46,6 +49,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const modalScrapeMsg = document.getElementById("modal-scrape-msg");
     const modalProgressBar = document.getElementById("modal-progress-bar");
 
+    // Brands Modal Elements
+    const brandsModal = document.getElementById("brands-list-modal");
+    const brandsGridContainer = document.getElementById("brands-grid-container");
+    const btnCloseBrandsModal = document.getElementById("btn-close-brands-modal");
+
     // Price History Modal Elements
     const historyModal = document.getElementById("price-history-modal");
     const historyModalTitle = document.getElementById("history-modal-title");
@@ -57,7 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
     fetchSummary();
     fetchPrices();
 
-    // Event Listeners: OEM Group Tabs
+    // Event Listeners: 2 Ana Grup Butonu Geçişi
     oemTabs.forEach(tab => {
         tab.addEventListener("click", () => {
             oemTabs.forEach(t => t.classList.remove("active"));
@@ -66,21 +74,44 @@ document.addEventListener("DOMContentLoaded", () => {
             currentBrand = "all";
             currentModel = "all";
 
-            // Update Brand Pills active status
-            brandPills.forEach(p => {
-                if (p.dataset.brand === "all") p.classList.add("active");
-                else p.classList.remove("active");
-            });
+            if (currentGroup === "tofas") {
+                document.getElementById("brand-pills").classList.add("hidden");
+                tofasBrandsSubsection.classList.remove("hidden");
+                tofasPills.forEach(p => {
+                    if (p.dataset.brand === "all") p.classList.add("active");
+                    else p.classList.remove("active");
+                });
+            } else {
+                tofasBrandsSubsection.classList.add("hidden");
+                document.getElementById("brand-pills").classList.remove("hidden");
+                brandPills.forEach(p => {
+                    if (p.dataset.brand === "all") p.classList.add("active");
+                    else p.classList.remove("active");
+                });
+            }
 
             loadModelSubsection();
             fetchPrices();
         });
     });
 
-    // Event Listeners: Brand Pills
+    // Event Listeners: Brand Pills (Tüm Markalar Barı)
     brandPills.forEach(pill => {
         pill.addEventListener("click", () => {
             brandPills.forEach(p => p.classList.remove("active"));
+            pill.classList.add("active");
+            currentBrand = pill.dataset.brand;
+            currentModel = "all";
+
+            loadModelSubsection();
+            fetchPrices();
+        });
+    });
+
+    // Event Listeners: Tofaş Brand Pills (Tofaş Grubu Barı)
+    tofasPills.forEach(pill => {
+        pill.addEventListener("click", () => {
+            tofasPills.forEach(p => p.classList.remove("active"));
             pill.classList.add("active");
             currentBrand = pill.dataset.brand;
             currentModel = "all";
@@ -152,17 +183,31 @@ document.addEventListener("DOMContentLoaded", () => {
         startScrape();
     });
 
+    // Aktif Marka Kartı Tıklama -> Open Brands Modal
+    if (statBrandsCard) {
+        statBrandsCard.addEventListener("click", () => {
+            openBrandsModal();
+        });
+    }
+
+    if (btnCloseBrandsModal) {
+        btnCloseBrandsModal.addEventListener("click", () => {
+            brandsModal.classList.add("hidden");
+        });
+    }
+
+    brandsModal.addEventListener("click", (e) => {
+        if (e.target === brandsModal) brandsModal.classList.add("hidden");
+    });
+
     if (btnCloseHistoryModal) {
         btnCloseHistoryModal.addEventListener("click", () => {
             historyModal.classList.add("hidden");
         });
     }
 
-    // Modal click outside to close
     historyModal.addEventListener("click", (e) => {
-        if (e.target === historyModal) {
-            historyModal.classList.add("hidden");
-        }
+        if (e.target === historyModal) historyModal.classList.add("hidden");
     });
 
     // ─── API Fetch Functions ───────────────────────────────────────────────
@@ -174,7 +219,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
 
             if (statTotalModels) statTotalModels.textContent = data.total_models || "0";
-            if (statBrandsCnt) statBrandsCnt.textContent = data.brands ? data.brands.length : "10";
+            if (statBrandsCnt) statBrandsCnt.textContent = data.brands ? data.brands.length : "14";
             if (statNewModels) statNewModels.textContent = data.new_models_cnt || "0";
             if (statNewVariants) statNewVariants.textContent = data.new_variants_cnt || "0";
             if (statPriceChanges) statPriceChanges.textContent = data.price_changes_cnt || "0";
@@ -185,6 +230,41 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         } catch (err) {
             console.error("Summary fetch error:", err);
+        }
+    }
+
+    async function openBrandsModal() {
+        try {
+            brandsGridContainer.innerHTML = `<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p class="mt-2">Markalar yükleniyor...</p></div>`;
+            brandsModal.classList.remove("hidden");
+
+            const res = await fetch("/api/brands");
+            if (!res.ok) throw new Error("Markalar çekilemedi");
+            const data = await res.json();
+
+            const brands = data.brands || [];
+            let html = "";
+
+            brands.forEach(b => {
+                const tofasBadge = b.is_tofas_group ? `<span class="badge badge-tofas"><i class="fa-solid fa-building"></i> Tofaş Grubu</span>` : `<span class="badge badge-other">Bireysel Marka</span>`;
+                html += `
+                    <div class="brand-modal-card">
+                        <div class="brand-modal-header">
+                            <span class="brand-modal-title">${b.brand}</span>
+                            ${tofasBadge}
+                        </div>
+                        <div class="brand-modal-stats">
+                            <span><i class="fa-solid fa-car"></i> <strong>${b.active_vehicle_cnt}</strong> Aktif Araç</span>
+                            <span><i class="fa-solid fa-layer-group"></i> <strong>${b.model_cnt}</strong> Model</span>
+                        </div>
+                    </div>
+                `;
+            });
+
+            brandsGridContainer.innerHTML = html;
+        } catch (err) {
+            console.error("Brands modal error:", err);
+            brandsGridContainer.innerHTML = `<p class="text-danger text-center py-4">Marka listesi yüklenirken hata oluştu.</p>`;
         }
     }
 
@@ -296,12 +376,13 @@ document.addEventListener("DOMContentLoaded", () => {
             // Badges
             let badgesHtml = "";
             if (item.is_new_model) {
-                badgesHtml += `<span class="badge badge-gold" title="Markaya Yeni Eklenen Araç Modeli">✨ YENİ MODEL</span> `;
+                badgesHtml += `<span class="badge badge-gold" title="Markaye Yeni Eklenen Araç Modeli">✨ YENİ MODEL</span> `;
             }
             if (item.is_new_variant) {
                 badgesHtml += `<span class="badge badge-emerald" title="Modele Yeni Eklenen Donanım Paketi">🏷️ YENİ PAKET</span> `;
             }
 
+            // Fiyat Değişim Renkleri: Artanlar YEŞİL (.diff-up), Azalanlar KIRMIZI (.diff-down), Değişmeyenler BEYAZ (.diff-neutral)
             let diffHtml = "-";
             if (item.price_diff > 0) {
                 diffHtml = `<span class="price-diff diff-up" title="Önceki Fiyat: ${formatMoney(item.previous_price_int)}"><i class="fa-solid fa-arrow-up"></i> +${formatMoney(item.price_diff)} (+%${item.price_change_pct})</span>`;
@@ -374,9 +455,9 @@ document.addEventListener("DOMContentLoaded", () => {
             history.forEach((h, idx) => {
                 let badge = `<span class="badge badge-neutral">Sabit</span>`;
                 if (h.price_diff > 0) {
-                    badge = `<span class="badge badge-coral">+${formatMoney(h.price_diff)} (+%${h.price_change_pct})</span>`;
+                    badge = `<span class="badge badge-up">+${formatMoney(h.price_diff)} (+%${h.price_change_pct})</span>`;
                 } else if (h.price_diff < 0) {
-                    badge = `<span class="badge badge-emerald">${formatMoney(h.price_diff)} (%${h.price_change_pct})</span>`;
+                    badge = `<span class="badge badge-down">${formatMoney(h.price_diff)} (%${h.price_change_pct})</span>`;
                 } else if (idx === 0) {
                     badge = `<span class="badge badge-blue">İlk Çekilen Fiyat</span>`;
                 }

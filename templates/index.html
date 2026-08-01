@@ -41,11 +41,12 @@
             </div>
         </div>
 
-        <div class="stat-card glass-panel">
+        <!-- Aktif Marka Kartı (Tıklanınca Modal Açılır) -->
+        <div class="stat-card glass-panel clickable-card" id="stat-brands-card" title="Tüm Aktif Markaları Görmek İçin Tıklayın">
             <div class="stat-icon icon-purple"><i class="fa-solid fa-tags"></i></div>
             <div class="stat-data">
-                <span class="stat-value" id="stat-brands-cnt">10</span>
-                <span class="stat-label">Aktif Marka (Fiat, VW, Ford, Kia...)</span>
+                <span class="stat-value" id="stat-brands-cnt">14</span>
+                <span class="stat-label">Aktif Marka Portföyü <i class="fa-solid fa-circle-info style-info-icon"></i></span>
             </div>
         </div>
 
@@ -76,21 +77,34 @@
 
     <!-- OEM Group & Brand Filter Controls Section -->
     <section class="controls-section glass-panel">
-        <!-- OEM Group Tabs -->
+        <!-- 2 Ana Butonlu Grup Yapısı -->
         <div class="oem-group-pills" id="oem-group-pills">
-            <button class="oem-tab active" data-group="all">🌐 Tüm Gruplar</button>
-            <button class="oem-tab" data-group="tofas">🏢 Tofaş Grubu (Fiat)</button>
-            <button class="oem-tab" data-group="dogus">🏢 Doğuş Grubu (VW, Skoda)</button>
-            <button class="oem-tab" data-group="renault_group">🏢 Renault Grubu (Renault, Dacia)</button>
-            <button class="oem-tab" data-group="other">🚗 Diğer Markalar (Ford, Kia, Toyota...)</button>
+            <button class="oem-tab active" data-group="all"><i class="fa-solid fa-globe"></i> Tüm Markalar</button>
+            <button class="oem-tab" data-group="tofas"><i class="fa-solid fa-building-flag"></i> Tofaş Grubu</button>
         </div>
 
-        <!-- Brand Selector Bar -->
+        <!-- Tofaş Grubu Seçildiğinde Beliren Alt Marka Şeridi -->
+        <div class="tofas-brands-subsection hidden" id="tofas-brands-subsection">
+            <span class="tofas-title"><i class="fa-solid fa-building"></i> Tofaş Grubu Markaları:</span>
+            <div class="tofas-pills-container" id="tofas-pills-container">
+                <button class="pill-btn active" data-brand="all">Tüm Tofaş Markaları</button>
+                <button class="pill-btn" data-brand="Fiat">Fiat</button>
+                <button class="pill-btn" data-brand="Peugeot">Peugeot</button>
+                <button class="pill-btn" data-brand="Opel">Opel</button>
+                <button class="pill-btn" data-brand="Citroën">Citroën</button>
+                <button class="pill-btn" data-brand="Jeep">Jeep</button>
+                <button class="pill-btn" data-brand="Alfa Romeo">Alfa Romeo</button>
+                <button class="pill-btn" data-brand="DS Automobiles">DS Automobiles</button>
+                <button class="pill-btn" data-brand="Maserati">Maserati</button>
+            </div>
+        </div>
+
+        <!-- Tüm Markalar Seçildiğinde Görünen Bireysel Marka Butonları -->
         <div class="brand-filter-pills" id="brand-pills">
             <button class="pill-btn active" data-brand="all">
-                <i class="fa-solid fa-globe"></i> Tüm Markalar
+                <i class="fa-solid fa-border-all"></i> Tüm Markalar
             </button>
-            <button class="pill-btn" data-brand="Fiat">Fiat (Tofaş)</button>
+            <button class="pill-btn" data-brand="Fiat">Fiat</button>
             <button class="pill-btn" data-brand="Volkswagen">VW</button>
             <button class="pill-btn" data-brand="Skoda">Skoda</button>
             <button class="pill-btn" data-brand="Renault">Renault</button>
@@ -98,6 +112,10 @@
             <button class="pill-btn" data-brand="Kia">Kia</button>
             <button class="pill-btn" data-brand="Hyundai">Hyundai</button>
             <button class="pill-btn" data-brand="Toyota">Toyota</button>
+            <button class="pill-btn" data-brand="Peugeot">Peugeot</button>
+            <button class="pill-btn" data-brand="Opel">Opel</button>
+            <button class="pill-btn" data-brand="Citroën">Citroën</button>
+            <button class="pill-btn" data-brand="Jeep">Jeep</button>
             <button class="pill-btn" data-brand="Chery">Chery</button>
             <button class="pill-btn" data-brand="Dacia">Dacia</button>
         </div>
@@ -196,6 +214,24 @@
             </table>
         </div>
     </section>
+</div>
+
+<!-- Aktif Markalar Portföyü Modalı -->
+<div id="brands-list-modal" class="modal-backdrop hidden">
+    <div class="brands-modal-card glass-panel">
+        <div class="modal-header">
+            <div>
+                <h3><i class="fa-solid fa-tags text-primary"></i> Aktif Marka Portföyü</h3>
+                <p class="sub-text">Sistemde anlık fiyatları çekilen otomobil markaları</p>
+            </div>
+            <button id="btn-close-brands-modal" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="brands-grid" id="brands-grid-container">
+                <!-- JavaScript ile dolacak -->
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Price History & Timeline Modal -->

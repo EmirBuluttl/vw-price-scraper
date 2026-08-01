@@ -48,6 +48,10 @@ from scrapers.chery_scraper   import CheryScraper
 from scrapers.dacia_scraper   import DaciaScraper
 from scrapers.kia_scraper     import KiaScraper
 from scrapers.fiat_scraper    import FiatScraper
+from scrapers.peugeot_scraper import PeugeotScraper
+from scrapers.opel_scraper    import OpelScraper
+from scrapers.citroen_scraper import CitroenScraper
+from scrapers.jeep_scraper    import JeepScraper
 
 ALL_SCRAPERS = [
     VWScraper(),
@@ -60,6 +64,10 @@ ALL_SCRAPERS = [
     DaciaScraper(),
     KiaScraper(),
     FiatScraper(),
+    PeugeotScraper(),
+    OpelScraper(),
+    CitroenScraper(),
+    JeepScraper(),
 ]
 
 SCRAPER_MAP = {s.brand.lower(): s for s in ALL_SCRAPERS}

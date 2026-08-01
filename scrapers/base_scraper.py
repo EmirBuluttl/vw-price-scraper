@@ -309,15 +309,13 @@ def save_records(
 def get_stale_records(conn: sqlite3.Connection, brand: str) -> list[dict]:
     """Söz konusu markanın veritabanındaki en son başarılı çekimini döndür."""
     rows = conn.execute(
-        """SELECT model_name, variant, price_raw, price_int, currency
-           FROM prices
-           WHERE brand = ?
-             AND is_stale = 0
-             AND scraped_date = (
-                 SELECT MAX(scraped_date) FROM prices
-                 WHERE brand = ? AND is_stale = 0
-             )""",
-        (brand, brand),
+        """SELECT m.name as model_name, v.name as variant, p.price_raw, p.price_int, p.currency
+           FROM prices p
+           JOIN variants v ON p.variant_id = v.id
+           JOIN models m ON v.model_id = m.id
+           JOIN brands b ON m.brand_id = b.id
+           WHERE b.name = ? AND p.is_latest = 1""",
+        (brand,),
     ).fetchall()
     return [
         {
