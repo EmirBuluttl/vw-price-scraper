@@ -18,6 +18,11 @@ document.addEventListener("DOMContentLoaded", () => {
     let sortBy = "price_asc";
     let pollInterval = null;
 
+    // Analytics Modal State
+    let activeAnalyticsVariantId = null;
+    let analyticsRawHistory = [];
+    let priceChartInstance = null;
+
     // DOM Elements
     const statTotalModels = document.getElementById("stat-total-models");
     const statBrandsCard = document.getElementById("stat-brands-card");
@@ -28,8 +33,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const oemTabs = document.querySelectorAll("#oem-group-pills .oem-tab");
     const brandPills = document.querySelectorAll("#brand-pills .pill-btn");
+
     const tofasBrandsSubsection = document.getElementById("tofas-brands-subsection");
     const tofasPills = document.querySelectorAll("#tofas-pills-container .pill-btn");
+
+    const independentBrandsSubsection = document.getElementById("independent-brands-subsection");
+    const independentPills = document.querySelectorAll("#independent-pills-container .pill-btn");
+
     const modelSubsectionBar = document.getElementById("model-subsection-bar");
     const modelPillsContainer = document.getElementById("model-pills-container");
 
@@ -42,6 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const selectFuel = document.getElementById("select-fuel");
     const selectBody = document.getElementById("select-body");
     const selectSort = document.getElementById("select-sort");
+    const btnResetFilters = document.getElementById("btn-reset-filters");
 
     const tbodyPrices = document.getElementById("tbody-prices");
     const lblRecordsCount = document.getElementById("lbl-records-count");
@@ -63,6 +74,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const historyTimelineContainer = document.getElementById("history-timeline-container");
     const btnCloseHistoryModal = document.getElementById("btn-close-history-modal");
 
+    const inputAnalyticsStartDate = document.getElementById("input-analytics-start-date");
+    const inputAnalyticsEndDate = document.getElementById("input-analytics-end-date");
+    const quickDateBtns = document.querySelectorAll(".quick-date-btn");
+
     const kpiStartPrice = document.getElementById("kpi-start-price");
     const kpiStartDate = document.getElementById("kpi-start-date");
     const kpiLatestPrice = document.getElementById("kpi-latest-price");
@@ -75,7 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
     fetchSummary();
     fetchPrices();
 
-    // Event Listeners: 2 Ana Grup Butonu Geçişi
+    // Event Listeners: 3 Ana Grup Butonu Geçişi
     oemTabs.forEach(tab => {
         tab.addEventListener("click", () => {
             oemTabs.forEach(t => t.classList.remove("active"));
@@ -84,15 +99,28 @@ document.addEventListener("DOMContentLoaded", () => {
             currentBrand = "all";
             currentModel = "all";
 
+            // Marka seçilmediği için Model Bar gizlenir
+            modelSubsectionBar.classList.add("hidden");
+
             if (currentGroup === "tofas") {
                 document.getElementById("brand-pills").classList.add("hidden");
+                independentBrandsSubsection.classList.add("hidden");
                 tofasBrandsSubsection.classList.remove("hidden");
                 tofasPills.forEach(p => {
                     if (p.dataset.brand === "all") p.classList.add("active");
                     else p.classList.remove("active");
                 });
+            } else if (currentGroup === "independent") {
+                document.getElementById("brand-pills").classList.add("hidden");
+                tofasBrandsSubsection.classList.add("hidden");
+                independentBrandsSubsection.classList.remove("hidden");
+                independentPills.forEach(p => {
+                    if (p.dataset.brand === "all") p.classList.add("active");
+                    else p.classList.remove("active");
+                });
             } else {
                 tofasBrandsSubsection.classList.add("hidden");
+                independentBrandsSubsection.classList.add("hidden");
                 document.getElementById("brand-pills").classList.remove("hidden");
                 brandPills.forEach(p => {
                     if (p.dataset.brand === "all") p.classList.add("active");
@@ -100,12 +128,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
             }
 
-            loadModelSubsection();
             fetchPrices();
         });
     });
 
-    // Event Listeners: Bağımsız Brand Pills (Tüm Markalar Barı)
+    // Event Listeners: Brand Pills (Tüm Markalar Sekmesi)
     brandPills.forEach(pill => {
         pill.addEventListener("click", () => {
             brandPills.forEach(p => p.classList.remove("active"));
@@ -118,7 +145,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // Event Listeners: Tofaş Brand Pills (Tofaş Grubu Barı)
+    // Event Listeners: Tofaş Brand Pills (Tofaş Grubu Sekmesi)
     tofasPills.forEach(pill => {
         pill.addEventListener("click", () => {
             tofasPills.forEach(p => p.classList.remove("active"));
@@ -130,6 +157,66 @@ document.addEventListener("DOMContentLoaded", () => {
             fetchPrices();
         });
     });
+
+    // Event Listeners: Bağımsız Brand Pills (Bağımsız Markalar Sekmesi)
+    independentPills.forEach(pill => {
+        pill.addEventListener("click", () => {
+            independentPills.forEach(p => p.classList.remove("active"));
+            pill.classList.add("active");
+            currentBrand = pill.dataset.brand;
+            currentModel = "all";
+
+            loadModelSubsection();
+            fetchPrices();
+        });
+    });
+
+    // Event Listener: Filtreleri Temizle Butonu
+    if (btnResetFilters) {
+        btnResetFilters.addEventListener("click", () => {
+            currentGroup = "all";
+            currentBrand = "all";
+            currentModel = "all";
+            searchQuery = "";
+            fuelFilter = "all";
+            bodyFilter = "all";
+            transFilter = "all";
+            statusFilter = "all";
+            yearFilter = "all";
+            minPrice = null;
+            maxPrice = null;
+            sortBy = "price_asc";
+
+            // Reset UI inputs
+            inputSearch.value = "";
+            btnClearSearch.style.display = "none";
+            inputMinPrice.value = "";
+            inputMaxPrice.value = "";
+            selectYear.value = "all";
+            selectStatus.value = "all";
+            selectFuel.value = "all";
+            selectBody.value = "all";
+            selectSort.value = "price_asc";
+
+            // Reset Group Tabs
+            oemTabs.forEach(t => {
+                if (t.dataset.group === "all") t.classList.add("active");
+                else t.classList.remove("active");
+            });
+
+            tofasBrandsSubsection.classList.add("hidden");
+            independentBrandsSubsection.classList.add("hidden");
+            document.getElementById("brand-pills").classList.remove("hidden");
+            brandPills.forEach(p => {
+                if (p.dataset.brand === "all") p.classList.add("active");
+                else p.classList.remove("active");
+            });
+
+            modelSubsectionBar.classList.add("hidden");
+
+            fetchPrices();
+        });
+    }
 
     // Search Input Debounce
     let searchDebounceTimeout = null;
@@ -227,6 +314,33 @@ document.addEventListener("DOMContentLoaded", () => {
         if (e.target === historyModal) historyModal.classList.add("hidden");
     });
 
+    // Analytics Modal Date Filter Controls
+    if (inputAnalyticsStartDate) {
+        inputAnalyticsStartDate.addEventListener("change", () => filterAnalyticsByDate());
+    }
+    if (inputAnalyticsEndDate) {
+        inputAnalyticsEndDate.addEventListener("change", () => filterAnalyticsByDate());
+    }
+
+    quickDateBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            quickDateBtns.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+
+            const days = btn.dataset.days;
+            if (days === "all") {
+                inputAnalyticsStartDate.value = "";
+                inputAnalyticsEndDate.value = "";
+            } else {
+                const d = new Date();
+                d.setDate(d.getDate() - parseInt(days, 10));
+                inputAnalyticsStartDate.value = d.toISOString().split("T")[0];
+                inputAnalyticsEndDate.value = new Date().toISOString().split("T")[0];
+            }
+            filterAnalyticsByDate();
+        });
+    });
+
     // ─── API Fetch Functions ───────────────────────────────────────────────
 
     async function fetchSummary() {
@@ -267,7 +381,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 html += `
                     <div class="brand-modal-card">
                         <div class="brand-modal-header">
-                            <span class="brand-modal-title">${b.brand}</span>
+                            <span class="brand-modal-title">${getBrandIconHtml(b.brand)} ${b.brand}</span>
                             ${tofasBadge}
                         </div>
                         <div class="brand-modal-stats">
@@ -286,7 +400,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function loadModelSubsection() {
-        // KURAL: Marka seçilmedikçe (currentBrand === 'all') modeller BUTON OLARAK LISTELENMEZ!
+        // KURAL: Kullanıcı spesifik bir marka butonuna basmadığı sürece (currentBrand === 'all') modeller KESİNLİKLE AÇILMAZ!
         if (currentBrand === "all") {
             modelSubsectionBar.classList.add("hidden");
             return;
@@ -412,9 +526,12 @@ document.addEventListener("DOMContentLoaded", () => {
             // Scraped Date Timestamp
             let dateStr = item.scraped_at ? item.scraped_at.replace("T", " ") : (item.scraped_date || "-");
 
+            // Brand Logo & Badge
+            const brandIcon = getBrandIconHtml(item.brand);
+
             html += `
                 <tr class="price-row" data-variant-id="${item.variant_id}">
-                    <td><span class="brand-badge brand-${(item.brand || '').toLowerCase().replace(/\s+/g, '')}">${item.brand}</span></td>
+                    <td><span class="brand-badge brand-${(item.brand || '').toLowerCase().replace(/\s+/g, '')}">${brandIcon} ${item.brand}</span></td>
                     <td class="font-bold text-main">${item.model_name}</td>
                     <td class="variant-name">${item.variant}</td>
                     <td>${attrHtml || '-'}</td>
@@ -422,7 +539,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <td>${diffHtml}</td>
                     <td><span class="date-badge"><i class="fa-regular fa-clock"></i> ${dateStr}</span></td>
                     <td>
-                        <button class="btn-history-view" data-variant-id="${item.variant_id}" title="Fiyat Geçmişi & Analizini Gör">
+                        <button class="btn-history-view" data-variant-id="${item.variant_id}" title="Fiyat Geçmişi & Trend Grafiğini Gör">
                             <i class="fa-solid fa-chart-line"></i> Analiz
                         </button>
                     </td>
@@ -444,6 +561,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function openPriceHistoryModal(variantId) {
         try {
+            activeAnalyticsVariantId = variantId;
             historyTimelineContainer.innerHTML = `<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p class="mt-2">Fiyat analizi ve geçmiş veriler yükleniyor...</p></div>`;
             historyModal.classList.remove("hidden");
 
@@ -452,90 +570,203 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
 
             const v = data.variant;
-            const a = data.analytics || {};
-            const history = data.history || [];
+            analyticsRawHistory = data.history || [];
 
-            historyModalTitle.innerHTML = `<i class="fa-solid fa-chart-line text-accent"></i> ${v.brand} ${v.model_name}`;
+            historyModalTitle.innerHTML = `<i class="fa-solid fa-chart-line text-accent"></i> ${getBrandIconHtml(v.brand)} ${v.brand} ${v.model_name}`;
             historyModalSubtitle.textContent = `${v.variant} (${v.model_year || '2026'} Model • ${v.fuel_type || ''} • ${v.transmission || ''})`;
 
-            // Populate KPI Cards
-            kpiStartPrice.textContent = formatMoney(a.start_price);
-            kpiStartDate.textContent = `Tarih: ${a.start_date}`;
-            kpiLatestPrice.textContent = formatMoney(a.latest_price);
-            kpiLatestDate.textContent = `Son Güncelleme: ${a.latest_date}`;
-            kpiMinMaxPrice.textContent = `${formatMoney(a.min_price)} / ${formatMoney(a.max_price)}`;
-
-            if (a.net_diff > 0) {
-                kpiNetDiff.textContent = `+${formatMoney(a.net_diff)}`;
-                kpiNetDiff.className = "kpi-value text-green";
-                kpiNetPct.textContent = `+%${a.net_change_pct} Zam`;
-                kpiNetPct.className = "kpi-sub text-green-sub";
-            } else if (a.net_diff < 0) {
-                kpiNetDiff.textContent = formatMoney(a.net_diff);
-                kpiNetDiff.className = "kpi-value text-red";
-                kpiNetPct.textContent = `%${a.net_change_pct} İndirim`;
-                kpiNetPct.className = "kpi-sub text-red-sub";
-            } else {
-                kpiNetDiff.textContent = "0 ₺";
-                kpiNetDiff.className = "kpi-value text-white";
-                kpiNetPct.textContent = "Değişim Yok (%0.0)";
-                kpiNetPct.className = "kpi-sub text-muted";
-            }
-
-            if (history.length === 0) {
-                historyTimelineContainer.innerHTML = `<p class="text-muted text-center py-4">Bu araç için geçmiş kayıt bulunamadı.</p>`;
-                return;
-            }
-
-            // Render Detailed Comparison Table
-            let timelineHtml = `
-                <table class="analytics-table">
-                    <thead>
-                        <tr>
-                            <th>Taram Tarihi & Saati</th>
-                            <th>Fiyat (TL)</th>
-                            <th>Fark Tipi</th>
-                            <th>Net Değişim (TL)</th>
-                            <th>Değişim Oranı (%)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            history.forEach((h, idx) => {
-                let badge = `<span class="badge badge-neutral">Sabit</span>`;
-                let diffText = "0 ₺";
-                let pctText = "%0.00";
-
-                if (h.price_diff > 0) {
-                    badge = `<span class="badge badge-up"><i class="fa-solid fa-arrow-up"></i> Zam Gelen</span>`;
-                    diffText = `+${formatMoney(h.price_diff)}`;
-                    pctText = `+%${h.price_change_pct}`;
-                } else if (h.price_diff < 0) {
-                    badge = `<span class="badge badge-down"><i class="fa-solid fa-arrow-down"></i> Fiyatı Düşen</span>`;
-                    diffText = formatMoney(h.price_diff);
-                    pctText = `%${h.price_change_pct}`;
-                } else if (idx === 0) {
-                    badge = `<span class="badge badge-blue"><i class="fa-solid fa-flag-checkered"></i> Başlangıç</span>`;
-                }
-
-                timelineHtml += `
-                    <tr>
-                        <td><i class="fa-regular fa-calendar-check text-muted"></i> ${h.scraped_date} (${h.scraped_at ? h.scraped_at.split('T')[1] : ''})</td>
-                        <td class="font-bold">${formatMoney(h.price_int)}</td>
-                        <td>${badge}</td>
-                        <td class="${h.price_diff > 0 ? 'text-green' : (h.price_diff < 0 ? 'text-red' : '')}">${diffText}</td>
-                        <td class="${h.price_diff > 0 ? 'text-green' : (h.price_diff < 0 ? 'text-red' : '')}">${pctText}</td>
-                    </tr>
-                `;
-            });
-            timelineHtml += `</tbody></table>`;
-
-            historyTimelineContainer.innerHTML = timelineHtml;
+            renderAnalyticsModalData(analyticsRawHistory);
         } catch (err) {
             console.error("History modal error:", err);
             historyTimelineContainer.innerHTML = `<p class="text-danger text-center py-4">Geçmiş veriler yüklenirken hata oluştu.</p>`;
         }
+    }
+
+    function filterAnalyticsByDate() {
+        if (!analyticsRawHistory || analyticsRawHistory.length === 0) return;
+
+        const sVal = inputAnalyticsStartDate.value;
+        const eVal = inputAnalyticsEndDate.value;
+
+        let filtered = analyticsRawHistory.filter(h => {
+            const hDate = h.scraped_date;
+            if (sVal && hDate < sVal) return false;
+            if (eVal && hDate > eVal) return false;
+            return true;
+        });
+
+        renderAnalyticsModalData(filtered.length > 0 ? filtered : analyticsRawHistory);
+    }
+
+    function renderAnalyticsModalData(historyList) {
+        if (!historyList || historyList.length === 0) {
+            historyTimelineContainer.innerHTML = `<p class="text-muted text-center py-4">Seçilen tarihler arasında kayıt bulunamadı.</p>`;
+            return;
+        }
+
+        // Compute KPIs
+        const startPrice = historyList[0].price_int;
+        const startDate = historyList[0].scraped_date;
+        const latestPrice = historyList[historyList.length - 1].price_int;
+        const latestDate = historyList[historyList.length - 1].scraped_date;
+        const minPrice = Math.min(...historyList.map(h => h.price_int));
+        const maxPrice = Math.max(...historyList.map(h => h.price_int));
+
+        const netDiff = latestPrice - startPrice;
+        const netPct = startPrice > 0 ? ((netDiff / startPrice) * 100).toFixed(2) : "0.00";
+
+        kpiStartPrice.textContent = formatMoney(startPrice);
+        kpiStartDate.textContent = `Tarih: ${startDate}`;
+        kpiLatestPrice.textContent = formatMoney(latestPrice);
+        kpiLatestDate.textContent = `Son Tarih: ${latestDate}`;
+        kpiMinMaxPrice.textContent = `${formatMoney(minPrice)} / ${formatMoney(maxPrice)}`;
+
+        if (netDiff > 0) {
+            kpiNetDiff.textContent = `+${formatMoney(netDiff)}`;
+            kpiNetDiff.className = "kpi-value text-green";
+            kpiNetPct.textContent = `+%${netPct} Zam`;
+            kpiNetPct.className = "kpi-sub text-green-sub";
+        } else if (netDiff < 0) {
+            kpiNetDiff.textContent = formatMoney(netDiff);
+            kpiNetDiff.className = "kpi-value text-red";
+            kpiNetPct.textContent = `%${netPct} İndirim`;
+            kpiNetPct.className = "kpi-sub text-red-sub";
+        } else {
+            kpiNetDiff.textContent = "0 ₺";
+            kpiNetDiff.className = "kpi-value text-white";
+            kpiNetPct.textContent = "Değişim Yok (%0.0)";
+            kpiNetPct.className = "kpi-sub text-muted";
+        }
+
+        // Render Table
+        let timelineHtml = `
+            <table class="analytics-table">
+                <thead>
+                    <tr>
+                        <th>Taram Tarihi</th>
+                        <th>Fiyat (TL)</th>
+                        <th>Fark Tipi</th>
+                        <th>Net Fark</th>
+                        <th>Değişim (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        historyList.forEach((h, idx) => {
+            let badge = `<span class="badge badge-neutral">Sabit</span>`;
+            let diffText = "0 ₺";
+            let pctText = "%0.00";
+
+            if (h.price_diff > 0) {
+                badge = `<span class="badge badge-up"><i class="fa-solid fa-arrow-up"></i> Zam Gelen</span>`;
+                diffText = `+${formatMoney(h.price_diff)}`;
+                pctText = `+%${h.price_change_pct}`;
+            } else if (h.price_diff < 0) {
+                badge = `<span class="badge badge-down"><i class="fa-solid fa-arrow-down"></i> Fiyatı Düşen</span>`;
+                diffText = formatMoney(h.price_diff);
+                pctText = `%${h.price_change_pct}`;
+            } else if (idx === 0) {
+                badge = `<span class="badge badge-blue"><i class="fa-solid fa-flag-checkered"></i> Başlangıç</span>`;
+            }
+
+            timelineHtml += `
+                <tr>
+                    <td><i class="fa-regular fa-calendar-check text-muted"></i> ${h.scraped_date}</td>
+                    <td class="font-bold">${formatMoney(h.price_int)}</td>
+                    <td>${badge}</td>
+                    <td class="${h.price_diff > 0 ? 'text-green' : (h.price_diff < 0 ? 'text-red' : '')}">${diffText}</td>
+                    <td class="${h.price_diff > 0 ? 'text-green' : (h.price_diff < 0 ? 'text-red' : '')}">${pctText}</td>
+                </tr>
+            `;
+        });
+        timelineHtml += `</tbody></table>`;
+
+        historyTimelineContainer.innerHTML = timelineHtml;
+
+        // Render Chart.js Trend Line Graph
+        renderTrendChart(historyList);
+    }
+
+    function renderTrendChart(historyList) {
+        const ctx = document.getElementById("priceTrendChart");
+        if (!ctx) return;
+
+        if (priceChartInstance) {
+            priceChartInstance.destroy();
+        }
+
+        const labels = historyList.map(h => h.scraped_date);
+        const prices = historyList.map(h => h.price_int);
+        const pointColors = historyList.map(h => h.price_diff > 0 ? "#10b981" : (h.price_diff < 0 ? "#ef4444" : "#6366f1"));
+
+        priceChartInstance = new Chart(ctx, {
+            type: "line",
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: "Fiyat Değişimi (TL)",
+                    data: prices,
+                    borderColor: "#6366f1",
+                    backgroundColor: "rgba(99, 102, 241, 0.15)",
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.35,
+                    pointBackgroundColor: pointColors,
+                    pointRadius: 6,
+                    pointHoverRadius: 9
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return "Fiyat: " + formatMoney(context.raw);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: "#9ca3af" },
+                        grid: { color: "rgba(255, 255, 255, 0.05)" }
+                    },
+                    y: {
+                        ticks: {
+                            color: "#9ca3af",
+                            callback: function(value) {
+                                return (value / 1000000).toFixed(2) + "M ₺";
+                            }
+                        },
+                        grid: { color: "rgba(255, 255, 255, 0.05)" }
+                    }
+                }
+            }
+        });
+    }
+
+    function getBrandIconHtml(brandName) {
+        const b = (brandName || '').toLowerCase();
+        if (b.includes('volkswagen') || b.includes('vw')) return `<i class="fa-solid fa-car-side text-blue"></i>`;
+        if (b.includes('ford')) return `<i class="fa-solid fa-car-rear text-blue"></i>`;
+        if (b.includes('fiat')) return `<i class="fa-solid fa-car-side text-red"></i>`;
+        if (b.includes('renault')) return `<i class="fa-solid fa-diamond text-yellow"></i>`;
+        if (b.includes('peugeot')) return `<i class="fa-solid fa-paw text-blue"></i>`;
+        if (b.includes('opel')) return `<i class="fa-solid fa-bolt text-yellow"></i>`;
+        if (b.includes('citroën') || b.includes('citroen')) return `<i class="fa-solid fa-angles-up text-red"></i>`;
+        if (b.includes('jeep')) return `<i class="fa-solid fa-truck-monster text-green"></i>`;
+        if (b.includes('alfa')) return `<i class="fa-solid fa-shield-halved text-red"></i>`;
+        if (b.includes('ds')) return `<i class="fa-solid fa-crown text-purple"></i>`;
+        if (b.includes('maserati')) return `<i class="fa-solid fa-trident text-blue"></i>`;
+        if (b.includes('skoda')) return `<i class="fa-solid fa-feather text-green"></i>`;
+        if (b.includes('hyundai')) return `<i class="fa-solid fa-h text-blue"></i>`;
+        if (b.includes('toyota')) return `<i class="fa-solid fa-circle-dot text-red"></i>`;
+        if (b.includes('kia')) return `<i class="fa-solid fa-k text-red"></i>`;
+        return `<i class="fa-solid fa-car"></i>`;
     }
 
     // ─── Live Scraper & Polling ───────────────────────────────────────────

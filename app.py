@@ -81,10 +81,13 @@ ALL_SCRAPERS = [
 SCRAPER_MAP = {s.brand.lower(): s for s in ALL_SCRAPERS}
 SCRAPE_STATUS = {"running": False, "message": "Bosta", "progress": 0, "last_run": None}
 
-# Tofaş Grubu Distribütörlük Kapsamı (Stellantis & Tofaş OEM)
+# Gruplar: Tofaş Grubu & Bağımsız Markalar
 OEM_GROUPS = {
     "tofas": [
         "Fiat", "Peugeot", "Opel", "Citroën", "Jeep", "Alfa Romeo", "DS Automobiles", "Maserati"
+    ],
+    "independent": [
+        "Volkswagen", "Skoda", "Renault", "Ford", "Hyundai", "Toyota", "Kia", "Chery", "Dacia"
     ],
 }
 
@@ -202,27 +205,22 @@ def api_summary():
     last_date_row = conn.execute("SELECT MAX(scraped_date) as max_date FROM prices").fetchone()
     last_date = last_date_row["max_date"] if last_date_row and last_date_row["max_date"] else None
 
-    # Toplam model/varyant sayisi (is_latest = 1)
     total_models = conn.execute(
         "SELECT COUNT(*) as cnt FROM prices WHERE is_latest = 1"
     ).fetchone()["cnt"]
 
-    # Yeni Model sayisi (is_new_model = 1 AND is_latest = 1)
     new_models_cnt = conn.execute(
         "SELECT COUNT(DISTINCT v.model_id) as cnt FROM prices p JOIN variants v ON p.variant_id = v.id WHERE p.is_new_model = 1 AND p.is_latest = 1"
     ).fetchone()["cnt"]
 
-    # Yeni Paket sayisi (is_new_variant = 1 AND is_latest = 1)
     new_variants_cnt = conn.execute(
         "SELECT COUNT(*) as cnt FROM prices WHERE is_new_variant = 1 AND is_latest = 1"
     ).fetchone()["cnt"]
 
-    # Fiyati Degisenler sayisi (price_diff != 0 AND is_latest = 1)
     price_changes_cnt = conn.execute(
         "SELECT COUNT(*) as cnt FROM prices WHERE price_diff != 0 AND price_diff IS NOT NULL AND is_latest = 1"
     ).fetchone()["cnt"]
 
-    # Marka Bazli Ozet Listesi
     brands_summary = conn.execute("""
         SELECT b.name as brand,
                MAX(p.scraped_date) as last_date,
@@ -278,7 +276,8 @@ def api_brands():
 
     return jsonify({
         "brands": brand_list,
-        "tofas_brands": OEM_GROUPS["tofas"]
+        "tofas_brands": OEM_GROUPS["tofas"],
+        "independent_brands": OEM_GROUPS["independent"]
     })
 
 
@@ -354,15 +353,10 @@ def api_prices():
     if request.args.get("all_dates") != "true":
         query += " AND p.is_latest = 1"
 
-    # KURAL: "Tüm Markalar" (group != 'tofas') secili ise Tofaş Grubu markalari ANA LISTEDE GOSTERILMEZ!
-    tofas_brands_lower = [b.lower() for b in OEM_GROUPS["tofas"]]
-    if group == "tofas":
-        query += f" AND LOWER(b.name) IN ({','.join(['?']*len(tofas_brands_lower))})"
-        params.extend(tofas_brands_lower)
-    elif not brand or brand.lower() == "all":
-        # Tüm markalar aktif ve spesifik marka secilmemisse Tofaş markalarini haric tut
-        query += f" AND LOWER(b.name) NOT IN ({','.join(['?']*len(tofas_brands_lower))})"
-        params.extend(tofas_brands_lower)
+    if group and group in OEM_GROUPS:
+        allowed_brands = [b.lower() for b in OEM_GROUPS[group]]
+        query += f" AND LOWER(b.name) IN ({','.join(['?']*len(allowed_brands))})"
+        params.extend(allowed_brands)
 
     if brand and brand.lower() != "all":
         query += " AND LOWER(b.name) = ?"
@@ -440,7 +434,10 @@ def api_prices():
 @app.route("/api/variant/<int:variant_id>/history")
 @login_required
 def api_variant_history(variant_id: int):
-    """Secilen bir varyantin kapsamli analiz metriklerini ve zaman çizelgesini getir."""
+    """Secilen bir varyantin dinamik tarih araligi metriklerini ve zaman çizelgesini getir."""
+    start_date_filter = request.args.get("start_date", "").strip()
+    end_date_filter = request.args.get("end_date", "").strip()
+
     conn = get_db()
     
     variant_info = conn.execute("""
@@ -456,14 +453,25 @@ def api_variant_history(variant_id: int):
         conn.close()
         return jsonify({"error": "Varyant bulunamadi"}), 404
 
-    history_rows = conn.execute("""
+    query = """
         SELECT id, price_raw, price_int, currency, scraped_at, scraped_date,
                is_latest, previous_price_int, price_diff, price_change_pct
         FROM prices
         WHERE variant_id = ?
-        ORDER BY scraped_date ASC, id ASC
-    """, (variant_id,)).fetchall()
+    """
+    params = [variant_id]
 
+    if start_date_filter:
+        query += " AND scraped_date >= ?"
+        params.append(start_date_filter)
+
+    if end_date_filter:
+        query += " AND scraped_date <= ?"
+        params.append(end_date_filter)
+
+    query += " ORDER BY scraped_date ASC, id ASC"
+
+    history_rows = conn.execute(query, params).fetchall()
     conn.close()
 
     history_list = [dict(h) for h in history_rows]
@@ -545,7 +553,7 @@ def trigger_scrape():
 @app.route("/api/export-excel")
 @login_required
 def api_export_excel():
-    """Artan ve azalan fiyatlarin renklendirildigi profesyonel Excel (.xlsx) ihracati."""
+    """Artan ve azalan fiyatlarin renklendirildigi ve yuzdelerin hatasiz hesaplandigi Excel (.xlsx) ihracati."""
     conn = get_db()
     rows = conn.execute("""
         SELECT b.name as brand, m.name as model_name, v.name as variant,
@@ -604,16 +612,20 @@ def api_export_excel():
         cell.border = thin_border
     ws.row_dimensions[1].height = 26
 
-    # Verileri Yaz ve Renklendir
+    # Verileri Yaz ve Renklendir (Yüzde Kesir Oranı Hesabı: pct_ratio = diff / prev)
     for r_idx, r in enumerate(rows, 2):
         p_diff = r["price_diff"] or 0
+        prev_p = r["previous_price_int"] or 0
         diff_type = "Zam Gelen" if p_diff > 0 else ("Fiyatı Düşen" if p_diff < 0 else "Sabit")
+
+        # Excel yüzde formatı (+0.00%) için kesir oranı hesabı (Örn: %5 için 0.05)
+        pct_ratio = (p_diff / prev_p) if prev_p > 0 else 0.0
 
         row_data = [
             r["brand"], r["model_name"], r["variant"], r["model_year"] or "2026",
             r["fuel_type"] or "-", r["transmission"] or "-", r["engine_power"] or "-",
-            r["body_type"] or "-", r["price_int"], r["previous_price_int"] or 0,
-            diff_type, p_diff, r["price_change_pct"] or 0.0, r["scraped_at"]
+            r["body_type"] or "-", r["price_int"], prev_p,
+            diff_type, p_diff, pct_ratio, r["scraped_at"]
         ]
         ws.append(row_data)
         ws.row_dimensions[r_idx].height = 20
@@ -627,7 +639,7 @@ def api_export_excel():
                 cell.number_format = '#,##0 "₺"'
                 cell.alignment = align_right
                 cell.font = num_font
-            elif c_idx == 13:  # % Degisim
+            elif c_idx == 13:  # % Degisim (Kesir Formatlandirma)
                 cell.number_format = '+0.00%;-0.00%;0.00%'
                 cell.alignment = align_right
             elif c_idx in (4, 5, 6, 7, 8, 11, 14):
