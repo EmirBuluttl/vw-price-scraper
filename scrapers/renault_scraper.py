@@ -39,13 +39,13 @@ class RenaultScraper(BaseScraper):
         seen: set[tuple] = set()
         model_urls = set()
 
-        # Ana sayfadan tüm aktif model linklerini dinamik olarak topla
+        # Ana sayfadan tüm aktif model linklerini dinamik olarak topla (Kategori indeks sayfalarını değil, sadece tekil model sayfalarını al)
         try:
             r_main = http_get("https://www.renault.com.tr", headers=headers)
             soup_main = BeautifulSoup(r_main.text, "html.parser")
             for a in soup_main.find_all("a", href=True):
                 href = a.get("href")
-                if any(cat in href for cat in ["binek-araclar", "hybrid-araclar", "elektrikli-araclar", "ticari-araclar"]) and href.endswith(".html"):
+                if any(cat in href for cat in ["/binek-araclar/", "/hybrid-araclar/", "/elektrikli-araclar/", "/ticari-araclar/"]) and href.endswith(".html"):
                     if "konfigurator" not in href and "fiyat" not in href:
                         full_url = urljoin("https://www.renault.com.tr", href)
                         model_urls.add(full_url)
