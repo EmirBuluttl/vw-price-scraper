@@ -60,6 +60,10 @@ body {
     background-size: cover;
 }
 
+.hidden {
+    display: none !important;
+}
+
 /* Glassmorphism Panel Component */
 .glass-panel {
     background: var(--bg-card);
