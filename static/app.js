@@ -403,6 +403,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // KURAL: Kullanıcı spesifik bir marka butonuna basmadığı sürece (currentBrand === 'all') modeller KESİNLİKLE AÇILMAZ!
         if (currentBrand === "all") {
             modelSubsectionBar.classList.add("hidden");
+            modelPillsContainer.innerHTML = "";
             return;
         }
 
