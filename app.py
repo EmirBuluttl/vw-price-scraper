@@ -49,6 +49,9 @@ from scrapers.peugeot_scraper import PeugeotScraper
 from scrapers.opel_scraper import OpelScraper
 from scrapers.citroen_scraper import CitroenScraper
 from scrapers.jeep_scraper import JeepScraper
+from scrapers.alfaromeo_scraper import AlfaRomeoScraper
+from scrapers.ds_scraper import DSScraper
+from scrapers.maserati_scraper import MaseratiScraper
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "car_price_scraper_secret_key_2026")
@@ -70,6 +73,9 @@ ALL_SCRAPERS = [
     OpelScraper(),
     CitroenScraper(),
     JeepScraper(),
+    AlfaRomeoScraper(),
+    DSScraper(),
+    MaseratiScraper(),
 ]
 
 SCRAPER_MAP = {s.brand.lower(): s for s in ALL_SCRAPERS}
@@ -78,7 +84,7 @@ SCRAPE_STATUS = {"running": False, "message": "Bosta", "progress": 0, "last_run"
 # Tofaş Grubu Distribütörlük Kapsamı (Stellantis & Tofaş OEM)
 OEM_GROUPS = {
     "tofas": [
-        "Fiat", "Peugeot", "Opel", "Citroën", "DS Automobiles", "Alfa Romeo", "Jeep", "Maserati"
+        "Fiat", "Peugeot", "Opel", "Citroën", "Jeep", "Alfa Romeo", "DS Automobiles", "Maserati"
     ],
 }
 
@@ -320,9 +326,9 @@ def api_prices():
     body = request.args.get("body", "").strip()
     trans = request.args.get("trans", "").strip()
     status_filter = request.args.get("status", "").strip()
+    year_filter = request.args.get("year", "").strip()
     min_price = request.args.get("min_price", type=int)
     max_price = request.args.get("max_price", type=int)
-    only_new = request.args.get("only_new", "false").lower() == "true"
     only_changes = request.args.get("only_changes", "false").lower() == "true"
     sort_by = request.args.get("sort", "price_asc")
 
@@ -333,7 +339,7 @@ def api_prices():
 
     query = """
         SELECT p.id, v.id as variant_id, b.name as brand, m.name as model_name, v.name as variant,
-               v.fuel_type, v.transmission, v.engine_power, m.body_type,
+               v.fuel_type, v.transmission, v.engine_power, v.model_year, m.body_type,
                p.price_raw, p.price_int, p.currency, p.scraped_at, p.scraped_date,
                p.is_latest, p.is_new_model, p.is_new_variant, p.previous_price_int,
                p.price_diff, p.price_change_pct
@@ -348,10 +354,15 @@ def api_prices():
     if request.args.get("all_dates") != "true":
         query += " AND p.is_latest = 1"
 
-    if group and group in OEM_GROUPS:
-        allowed_brands = [b.lower() for b in OEM_GROUPS[group]]
-        query += f" AND LOWER(b.name) IN ({','.join(['?']*len(allowed_brands))})"
-        params.extend(allowed_brands)
+    # KURAL: "Tüm Markalar" (group != 'tofas') secili ise Tofaş Grubu markalari ANA LISTEDE GOSTERILMEZ!
+    tofas_brands_lower = [b.lower() for b in OEM_GROUPS["tofas"]]
+    if group == "tofas":
+        query += f" AND LOWER(b.name) IN ({','.join(['?']*len(tofas_brands_lower))})"
+        params.extend(tofas_brands_lower)
+    elif not brand or brand.lower() == "all":
+        # Tüm markalar aktif ve spesifik marka secilmemisse Tofaş markalarini haric tut
+        query += f" AND LOWER(b.name) NOT IN ({','.join(['?']*len(tofas_brands_lower))})"
+        params.extend(tofas_brands_lower)
 
     if brand and brand.lower() != "all":
         query += " AND LOWER(b.name) = ?"
@@ -360,6 +371,10 @@ def api_prices():
     if model and model.lower() != "all":
         query += " AND LOWER(m.name) = ?"
         params.append(model.lower())
+
+    if year_filter and year_filter.lower() != "all":
+        query += " AND (v.model_year = ? OR v.name LIKE ?)"
+        params.extend([year_filter, f"%{year_filter}%"])
 
     if fuel and fuel.lower() != "all":
         query += " AND LOWER(v.fuel_type) = ?"
@@ -381,9 +396,7 @@ def api_prices():
         query += " AND p.price_int <= ?"
         params.append(max_price)
 
-    if status_filter == "new":
-        query += " AND (p.is_new_model = 1 OR p.is_new_variant = 1)"
-    elif status_filter == "drop":
+    if status_filter == "drop":
         query += " AND p.price_diff < 0"
     elif status_filter == "rise":
         query += " AND p.price_diff > 0"
@@ -393,9 +406,6 @@ def api_prices():
         term = f"%{search.lower()}%"
         params.extend([term, term, term])
 
-    if only_new:
-        query += " AND (p.is_new_model = 1 OR p.is_new_variant = 1)"
-
     if only_changes:
         query += " AND p.price_diff != 0 AND p.price_diff IS NOT NULL"
 
@@ -404,10 +414,6 @@ def api_prices():
         query += " ORDER BY p.price_int ASC"
     elif sort_by == "price_desc":
         query += " ORDER BY p.price_int DESC"
-    elif sort_by == "brand":
-        query += " ORDER BY b.name ASC, p.price_int ASC"
-    elif sort_by == "model":
-        query += " ORDER BY m.name ASC, p.price_int ASC"
     elif sort_by == "diff_asc":
         query += " ORDER BY p.price_diff ASC"
     elif sort_by == "diff_desc":
@@ -434,12 +440,12 @@ def api_prices():
 @app.route("/api/variant/<int:variant_id>/history")
 @login_required
 def api_variant_history(variant_id: int):
-    """Secilen bir varyantin tum tarihsel fiyat gecmisini ve degisim oranlarini getir."""
+    """Secilen bir varyantin kapsamli analiz metriklerini ve zaman çizelgesini getir."""
     conn = get_db()
     
     variant_info = conn.execute("""
         SELECT v.id, b.name as brand, m.name as model_name, v.name as variant,
-               v.fuel_type, v.transmission, v.engine_power, m.body_type
+               v.fuel_type, v.transmission, v.engine_power, v.model_year, m.body_type
         FROM variants v
         JOIN models m ON v.model_id = m.id
         JOIN brands b ON m.brand_id = b.id
@@ -460,9 +466,31 @@ def api_variant_history(variant_id: int):
 
     conn.close()
 
+    history_list = [dict(h) for h in history_rows]
+
+    # Analiz Metrikleri (KPI Computations)
+    start_price = history_list[0]["price_int"] if history_list else 0
+    latest_price = history_list[-1]["price_int"] if history_list else 0
+    min_price = min([h["price_int"] for h in history_list]) if history_list else 0
+    max_price = max([h["price_int"] for h in history_list]) if history_list else 0
+    
+    net_diff = latest_price - start_price
+    net_change_pct = round((net_diff / start_price) * 100, 2) if start_price > 0 else 0.0
+
     return jsonify({
         "variant": dict(variant_info),
-        "history": [dict(h) for h in history_rows]
+        "analytics": {
+            "start_price": start_price,
+            "start_date": history_list[0]["scraped_date"] if history_list else "-",
+            "latest_price": latest_price,
+            "latest_date": history_list[-1]["scraped_date"] if history_list else "-",
+            "min_price": min_price,
+            "max_price": max_price,
+            "net_diff": net_diff,
+            "net_change_pct": net_change_pct,
+            "total_scans": len(history_list),
+        },
+        "history": history_list
     })
 
 
@@ -517,11 +545,11 @@ def trigger_scrape():
 @app.route("/api/export-excel")
 @login_required
 def api_export_excel():
-    """Profesyonel bicimlendirilmis Excel (.xlsx) ihracat endpoint'i."""
+    """Artan ve azalan fiyatlarin renklendirildigi profesyonel Excel (.xlsx) ihracati."""
     conn = get_db()
     rows = conn.execute("""
         SELECT b.name as brand, m.name as model_name, v.name as variant,
-               v.fuel_type, v.transmission, v.engine_power, m.body_type,
+               v.fuel_type, v.transmission, v.engine_power, v.model_year, m.body_type,
                p.price_int, p.currency, p.previous_price_int, p.price_diff, p.price_change_pct, p.scraped_at
         FROM prices p
         JOIN variants v ON p.variant_id = v.id
@@ -537,9 +565,17 @@ def api_export_excel():
     ws.title = "Güncel Araç Fiyatları"
     ws.views.sheetView[0].showGridLines = True
 
-    # Baslik Stilleri
+    # Başlık & Hücre Stilleri
     header_fill = PatternFill(start_color="1F2937", end_color="1F2937", fill_type="solid")
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+
+    # Renk Dolguları (Fiyatı Artanlar YEŞİL, Düşenler KIRMIZI)
+    green_fill = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")
+    green_font = Font(name="Calibri", size=10, bold=True, color="15803D")
+
+    red_fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+    red_font = Font(name="Calibri", size=10, bold=True, color="B91C1C")
+
     data_font = Font(name="Calibri", size=10)
     num_font = Font(name="Calibri", size=10, bold=True)
     align_left = Alignment(horizontal="left", vertical="center")
@@ -554,8 +590,8 @@ def api_export_excel():
     )
 
     headers = [
-        "Marka", "Model", "Varyant / Donanım", "Yakit Tipi", "Sanziman", "Motor Gucu",
-        "Kasa Tipi", "Guncel Fiyat (TL)", "Onceki Fiyat (TL)", "Fark (TL)", "Degisim (%)", "Guncellenme Tarihi"
+        "Marka", "Model", "Varyant / Donanım", "Model Yılı", "Yakit Tipi", "Sanziman", "Motor Gucu",
+        "Kasa Tipi", "Guncel Fiyat (TL)", "Onceki Fiyat (TL)", "Fark Tipi", "Fark (TL)", "Degisim (%)", "Guncellenme Tarihi"
     ]
 
     ws.append(headers)
@@ -568,13 +604,16 @@ def api_export_excel():
         cell.border = thin_border
     ws.row_dimensions[1].height = 26
 
-    # Verileri Yaz
+    # Verileri Yaz ve Renklendir
     for r_idx, r in enumerate(rows, 2):
+        p_diff = r["price_diff"] or 0
+        diff_type = "Zam Gelen" if p_diff > 0 else ("Fiyatı Düşen" if p_diff < 0 else "Sabit")
+
         row_data = [
-            r["brand"], r["model_name"], r["variant"], r["fuel_type"] or "-",
-            r["transmission"] or "-", r["engine_power"] or "-", r["body_type"] or "-",
-            r["price_int"], r["previous_price_int"] or 0, r["price_diff"] or 0,
-            r["price_change_pct"] or 0.0, r["scraped_at"]
+            r["brand"], r["model_name"], r["variant"], r["model_year"] or "2026",
+            r["fuel_type"] or "-", r["transmission"] or "-", r["engine_power"] or "-",
+            r["body_type"] or "-", r["price_int"], r["previous_price_int"] or 0,
+            diff_type, p_diff, r["price_change_pct"] or 0.0, r["scraped_at"]
         ]
         ws.append(row_data)
         ws.row_dimensions[r_idx].height = 20
@@ -584,17 +623,27 @@ def api_export_excel():
             cell.border = thin_border
             cell.font = data_font
 
-            if c_idx in (8, 9, 10):  # Fiyat Sayilari
+            if c_idx in (9, 10, 12):  # Fiyat Sayilari
                 cell.number_format = '#,##0 "₺"'
                 cell.alignment = align_right
                 cell.font = num_font
-            elif c_idx == 11:  # % Degisim
+            elif c_idx == 13:  # % Degisim
                 cell.number_format = '+0.00%;-0.00%;0.00%'
                 cell.alignment = align_right
-            elif c_idx in (4, 5, 6, 7, 12):
+            elif c_idx in (4, 5, 6, 7, 8, 11, 14):
                 cell.alignment = align_center
             else:
                 cell.alignment = align_left
+
+            # Renklendirme Kurallari: Fiyat Artisi YEŞİL, Azalisi KIRMIZI
+            if p_diff > 0:
+                if c_idx in (9, 11, 12, 13):
+                    cell.fill = green_fill
+                    cell.font = green_font
+            elif p_diff < 0:
+                if c_idx in (9, 11, 12, 13):
+                    cell.fill = red_fill
+                    cell.font = red_font
 
     # Otomatik Sutun Genisligi
     for col in ws.columns:
@@ -610,7 +659,7 @@ def api_export_excel():
     wb.save(output)
     output.seek(0)
 
-    filename = f"arac_fiyat_listesi_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    filename = f"arac_fiyat_analizi_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     return Response(
         output.getvalue(),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -21,7 +21,7 @@
                 <i class="fa-solid fa-arrows-rotate"></i> <span>Taramayı Başlat</span>
             </button>
 
-            <a href="{{ url_for('api_export_excel') }}" class="btn btn-success" title="Biçimlendirilmiş Excel İndir">
+            <a href="{{ url_for('api_export_excel') }}" class="btn btn-success" title="Biçimlendirilmiş Renkli Excel İndir">
                 <i class="fa-solid fa-file-excel"></i> <span>Excel İndir (.xlsx)</span>
             </a>
 
@@ -45,7 +45,7 @@
         <div class="stat-card glass-panel clickable-card" id="stat-brands-card" title="Tüm Aktif Markaları Görmek İçin Tıklayın">
             <div class="stat-icon icon-purple"><i class="fa-solid fa-tags"></i></div>
             <div class="stat-data">
-                <span class="stat-value" id="stat-brands-cnt">14</span>
+                <span class="stat-value" id="stat-brands-cnt">17</span>
                 <span class="stat-label">Aktif Marka Portföyü <i class="fa-solid fa-circle-info style-info-icon"></i></span>
             </div>
         </div>
@@ -99,12 +99,11 @@
             </div>
         </div>
 
-        <!-- Tüm Markalar Seçildiğinde Görünen Bireysel Marka Butonları -->
+        <!-- Tüm Markalar Seçildiğinde Görünen Bağımsız Marka Butonları (Tofaş Harici) -->
         <div class="brand-filter-pills" id="brand-pills">
             <button class="pill-btn active" data-brand="all">
-                <i class="fa-solid fa-border-all"></i> Tüm Markalar
+                <i class="fa-solid fa-border-all"></i> Tüm Bağımsız Markalar
             </button>
-            <button class="pill-btn" data-brand="Fiat">Fiat</button>
             <button class="pill-btn" data-brand="Volkswagen">VW</button>
             <button class="pill-btn" data-brand="Skoda">Skoda</button>
             <button class="pill-btn" data-brand="Renault">Renault</button>
@@ -112,10 +111,6 @@
             <button class="pill-btn" data-brand="Kia">Kia</button>
             <button class="pill-btn" data-brand="Hyundai">Hyundai</button>
             <button class="pill-btn" data-brand="Toyota">Toyota</button>
-            <button class="pill-btn" data-brand="Peugeot">Peugeot</button>
-            <button class="pill-btn" data-brand="Opel">Opel</button>
-            <button class="pill-btn" data-brand="Citroën">Citroën</button>
-            <button class="pill-btn" data-brand="Jeep">Jeep</button>
             <button class="pill-btn" data-brand="Chery">Chery</button>
             <button class="pill-btn" data-brand="Dacia">Dacia</button>
         </div>
@@ -143,11 +138,20 @@
                 <input type="number" id="input-max-price" placeholder="Max TL" min="0" step="50000">
             </div>
 
-            <!-- Quick Status Filters -->
+            <!-- Model Yılı Filtresi -->
+            <div class="select-wrapper">
+                <select id="select-year" title="Model Yılı Filtresi">
+                    <option value="all">📅 Tüm Model Yılları</option>
+                    <option value="2026">2026 Model</option>
+                    <option value="2025">2025 Model</option>
+                    <option value="2024">2024 Model</option>
+                </select>
+            </div>
+
+            <!-- Temizlenmiş Quick Status Filters (Sadece Yeni Eklenecekler Kaldırıldı) -->
             <div class="select-wrapper">
                 <select id="select-status" title="Durum Filtresi">
                     <option value="all">🎯 Tüm Durumlar</option>
-                    <option value="new">✨ Sadece Yeni Eklenecekler</option>
                     <option value="drop">🔻 Sadece Fiyatı Düşenler</option>
                     <option value="rise">🔺 Sadece Zam Gelenler</option>
                 </select>
@@ -170,13 +174,12 @@
                     <option value="Ticari">🚚 Ticari / Pick-up</option>
                 </select>
 
+                <!-- Temizlenmiş Sıralama Seçenekleri (Markaya Göre ve Modele Göre Kaldırıldı) -->
                 <select id="select-sort" title="Sıralama">
                     <option value="price_asc">Fiyat: Düşükten Yükseğe</option>
                     <option value="price_desc">Fiyat: Yüksekten Düşüğe</option>
                     <option value="diff_asc">En Çok Düşenler</option>
                     <option value="diff_desc">En Çok Artanlar</option>
-                    <option value="brand">Markaya Göre</option>
-                    <option value="model">Modele Göre</option>
                 </select>
             </div>
         </div>
@@ -200,7 +203,7 @@
                         <th>Güncel Fiyat</th>
                         <th>Değişim & Durum</th>
                         <th>Çekilme Tarihi</th>
-                        <th>Detay / Geçmiş</th>
+                        <th>Detay / Analiz</th>
                     </tr>
                 </thead>
                 <tbody id="tbody-prices">
@@ -234,17 +237,43 @@
     </div>
 </div>
 
-<!-- Price History & Timeline Modal -->
+<!-- Gelişmiş Fiyat Analiz & Geçmiş Portalı Modalı -->
 <div id="price-history-modal" class="modal-backdrop hidden">
     <div class="history-modal-card glass-panel">
         <div class="modal-header">
             <div>
-                <h3 id="history-modal-title">Araç Fiyat Geçmişi & Zaman Çizelgesi</h3>
+                <h3 id="history-modal-title"><i class="fa-solid fa-chart-line text-accent"></i> Araç Fiyat Analiz Portalı</h3>
                 <p id="history-modal-subtitle" class="sub-text"></p>
             </div>
             <button id="btn-close-history-modal" class="btn-close">&times;</button>
         </div>
+
+        <!-- Analiz KPI Özet Kartları -->
+        <div class="analytics-kpi-grid" id="analytics-kpi-grid">
+            <div class="kpi-card">
+                <span class="kpi-label">İlk Çekim Fiyatı</span>
+                <span class="kpi-value" id="kpi-start-price">-</span>
+                <span class="kpi-sub" id="kpi-start-date">-</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-label">Güncel Fiyat</span>
+                <span class="kpi-value" id="kpi-latest-price">-</span>
+                <span class="kpi-sub" id="kpi-latest-date">-</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-label">Min / Max Fiyat</span>
+                <span class="kpi-value" id="kpi-minmax-price">-</span>
+                <span class="kpi-sub">Fiyat Aralığı</span>
+            </div>
+            <div class="kpi-card highlight-kpi">
+                <span class="kpi-label">Net Değişim</span>
+                <span class="kpi-value" id="kpi-net-diff">-</span>
+                <span class="kpi-sub" id="kpi-net-pct">%0.0</span>
+            </div>
+        </div>
+
         <div class="modal-body">
+            <h4 class="history-table-title"><i class="fa-solid fa-clock-rotate-left"></i> Tarihsel Taramalar & Fiyat Değişim Çizelgesi</h4>
             <div class="history-timeline" id="history-timeline-container">
                 <!-- JavaScript ile dolacak -->
             </div>

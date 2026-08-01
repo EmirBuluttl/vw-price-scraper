@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let bodyFilter = "all";
     let transFilter = "all";
     let statusFilter = "all";
+    let yearFilter = "all";
     let minPrice = null;
     let maxPrice = null;
     let sortBy = "price_asc";
@@ -36,6 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnClearSearch = document.getElementById("btn-clear-search");
     const inputMinPrice = document.getElementById("input-min-price");
     const inputMaxPrice = document.getElementById("input-max-price");
+    const selectYear = document.getElementById("select-year");
     const selectStatus = document.getElementById("select-status");
     const selectFuel = document.getElementById("select-fuel");
     const selectBody = document.getElementById("select-body");
@@ -54,12 +56,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const brandsGridContainer = document.getElementById("brands-grid-container");
     const btnCloseBrandsModal = document.getElementById("btn-close-brands-modal");
 
-    // Price History Modal Elements
+    // Price History Analytics Modal Elements
     const historyModal = document.getElementById("price-history-modal");
     const historyModalTitle = document.getElementById("history-modal-title");
     const historyModalSubtitle = document.getElementById("history-modal-subtitle");
     const historyTimelineContainer = document.getElementById("history-timeline-container");
     const btnCloseHistoryModal = document.getElementById("btn-close-history-modal");
+
+    const kpiStartPrice = document.getElementById("kpi-start-price");
+    const kpiStartDate = document.getElementById("kpi-start-date");
+    const kpiLatestPrice = document.getElementById("kpi-latest-price");
+    const kpiLatestDate = document.getElementById("kpi-latest-date");
+    const kpiMinMaxPrice = document.getElementById("kpi-minmax-price");
+    const kpiNetDiff = document.getElementById("kpi-net-diff");
+    const kpiNetPct = document.getElementById("kpi-net-pct");
 
     // Initial Data Fetch
     fetchSummary();
@@ -95,7 +105,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // Event Listeners: Brand Pills (Tüm Markalar Barı)
+    // Event Listeners: Bağımsız Brand Pills (Tüm Markalar Barı)
     brandPills.forEach(pill => {
         pill.addEventListener("click", () => {
             brandPills.forEach(p => p.classList.remove("active"));
@@ -155,6 +165,13 @@ document.addEventListener("DOMContentLoaded", () => {
     inputMaxPrice.addEventListener("input", handlePriceRangeChange);
 
     // Select Filters
+    if (selectYear) {
+        selectYear.addEventListener("change", (e) => {
+            yearFilter = e.target.value;
+            fetchPrices();
+        });
+    }
+
     selectStatus.addEventListener("change", (e) => {
         statusFilter = e.target.value;
         fetchPrices();
@@ -219,7 +236,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
 
             if (statTotalModels) statTotalModels.textContent = data.total_models || "0";
-            if (statBrandsCnt) statBrandsCnt.textContent = data.brands ? data.brands.length : "14";
+            if (statBrandsCnt) statBrandsCnt.textContent = data.brands ? data.brands.length : "17";
             if (statNewModels) statNewModels.textContent = data.new_models_cnt || "0";
             if (statNewVariants) statNewVariants.textContent = data.new_variants_cnt || "0";
             if (statPriceChanges) statPriceChanges.textContent = data.price_changes_cnt || "0";
@@ -246,7 +263,7 @@ document.addEventListener("DOMContentLoaded", () => {
             let html = "";
 
             brands.forEach(b => {
-                const tofasBadge = b.is_tofas_group ? `<span class="badge badge-tofas"><i class="fa-solid fa-building"></i> Tofaş Grubu</span>` : `<span class="badge badge-other">Bireysel Marka</span>`;
+                const tofasBadge = b.is_tofas_group ? `<span class="badge badge-tofas"><i class="fa-solid fa-building"></i> Tofaş Grubu</span>` : `<span class="badge badge-other">Bağımsız Marka</span>`;
                 html += `
                     <div class="brand-modal-card">
                         <div class="brand-modal-header">
@@ -269,15 +286,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function loadModelSubsection() {
-        if (currentBrand === "all" && currentGroup === "all") {
+        // KURAL: Marka seçilmedikçe (currentBrand === 'all') modeller BUTON OLARAK LISTELENMEZ!
+        if (currentBrand === "all") {
             modelSubsectionBar.classList.add("hidden");
             return;
         }
 
         try {
             const url = new URL("/api/models", window.location.origin);
-            if (currentBrand !== "all") url.searchParams.append("brand", currentBrand);
-            if (currentGroup !== "all") url.searchParams.append("group", currentGroup);
+            url.searchParams.append("brand", currentBrand);
 
             const res = await fetch(url);
             if (!res.ok) return;
@@ -327,6 +344,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (currentBrand !== "all") url.searchParams.append("brand", currentBrand);
             if (currentModel !== "all") url.searchParams.append("model", currentModel);
             if (searchQuery) url.searchParams.append("search", searchQuery);
+            if (yearFilter !== "all") url.searchParams.append("year", yearFilter);
             if (fuelFilter !== "all") url.searchParams.append("fuel", fuelFilter);
             if (bodyFilter !== "all") url.searchParams.append("body", bodyFilter);
             if (transFilter !== "all") url.searchParams.append("trans", transFilter);
@@ -373,15 +391,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         let html = "";
         prices.forEach(item => {
-            // Badges
-            let badgesHtml = "";
-            if (item.is_new_model) {
-                badgesHtml += `<span class="badge badge-gold" title="Markaye Yeni Eklenen Araç Modeli">✨ YENİ MODEL</span> `;
-            }
-            if (item.is_new_variant) {
-                badgesHtml += `<span class="badge badge-emerald" title="Modele Yeni Eklenen Donanım Paketi">🏷️ YENİ PAKET</span> `;
-            }
-
             // Fiyat Değişim Renkleri: Artanlar YEŞİL (.diff-up), Azalanlar KIRMIZI (.diff-down), Değişmeyenler BEYAZ (.diff-neutral)
             let diffHtml = "-";
             if (item.price_diff > 0) {
@@ -392,8 +401,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 diffHtml = `<span class="price-diff diff-neutral">Sabit</span>`;
             }
 
-            // Attributes
+            // Attributes & Model Year
             let attrHtml = "";
+            if (item.model_year) attrHtml += `<span class="attr-pill attr-year">${item.model_year} Model</span> `;
             if (item.fuel_type) attrHtml += `<span class="attr-pill attr-fuel">${item.fuel_type}</span> `;
             if (item.body_type) attrHtml += `<span class="attr-pill attr-body">${item.body_type}</span> `;
             if (item.transmission) attrHtml += `<span class="attr-pill attr-trans">${item.transmission}</span> `;
@@ -409,11 +419,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     <td class="variant-name">${item.variant}</td>
                     <td>${attrHtml || '-'}</td>
                     <td class="price-val">${formatMoney(item.price_int)}</td>
-                    <td>${badgesHtml} ${diffHtml}</td>
+                    <td>${diffHtml}</td>
                     <td><span class="date-badge"><i class="fa-regular fa-clock"></i> ${dateStr}</span></td>
                     <td>
-                        <button class="btn-history-view" data-variant-id="${item.variant_id}" title="Fiyat Geçmişi & Grafiğini Gör">
-                            <i class="fa-solid fa-clock-rotate-left"></i> Geçmiş
+                        <button class="btn-history-view" data-variant-id="${item.variant_id}" title="Fiyat Geçmişi & Analizini Gör">
+                            <i class="fa-solid fa-chart-line"></i> Analiz
                         </button>
                     </td>
                 </tr>
@@ -434,7 +444,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function openPriceHistoryModal(variantId) {
         try {
-            historyTimelineContainer.innerHTML = `<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p class="mt-2">Geçmiş yükleniyor...</p></div>`;
+            historyTimelineContainer.innerHTML = `<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p class="mt-2">Fiyat analizi ve geçmiş veriler yükleniyor...</p></div>`;
             historyModal.classList.remove("hidden");
 
             const res = await fetch(`/api/variant/${variantId}/history`);
@@ -442,35 +452,84 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
 
             const v = data.variant;
-            historyModalTitle.textContent = `${v.brand} ${v.model_name}`;
-            historyModalSubtitle.textContent = `${v.variant} (${v.fuel_type || ''} ${v.transmission || ''})`;
-
+            const a = data.analytics || {};
             const history = data.history || [];
+
+            historyModalTitle.innerHTML = `<i class="fa-solid fa-chart-line text-accent"></i> ${v.brand} ${v.model_name}`;
+            historyModalSubtitle.textContent = `${v.variant} (${v.model_year || '2026'} Model • ${v.fuel_type || ''} • ${v.transmission || ''})`;
+
+            // Populate KPI Cards
+            kpiStartPrice.textContent = formatMoney(a.start_price);
+            kpiStartDate.textContent = `Tarih: ${a.start_date}`;
+            kpiLatestPrice.textContent = formatMoney(a.latest_price);
+            kpiLatestDate.textContent = `Son Güncelleme: ${a.latest_date}`;
+            kpiMinMaxPrice.textContent = `${formatMoney(a.min_price)} / ${formatMoney(a.max_price)}`;
+
+            if (a.net_diff > 0) {
+                kpiNetDiff.textContent = `+${formatMoney(a.net_diff)}`;
+                kpiNetDiff.className = "kpi-value text-green";
+                kpiNetPct.textContent = `+%${a.net_change_pct} Zam`;
+                kpiNetPct.className = "kpi-sub text-green-sub";
+            } else if (a.net_diff < 0) {
+                kpiNetDiff.textContent = formatMoney(a.net_diff);
+                kpiNetDiff.className = "kpi-value text-red";
+                kpiNetPct.textContent = `%${a.net_change_pct} İndirim`;
+                kpiNetPct.className = "kpi-sub text-red-sub";
+            } else {
+                kpiNetDiff.textContent = "0 ₺";
+                kpiNetDiff.className = "kpi-value text-white";
+                kpiNetPct.textContent = "Değişim Yok (%0.0)";
+                kpiNetPct.className = "kpi-sub text-muted";
+            }
+
             if (history.length === 0) {
                 historyTimelineContainer.innerHTML = `<p class="text-muted text-center py-4">Bu araç için geçmiş kayıt bulunamadı.</p>`;
                 return;
             }
 
-            let timelineHtml = `<div class="timeline-list">`;
+            // Render Detailed Comparison Table
+            let timelineHtml = `
+                <table class="analytics-table">
+                    <thead>
+                        <tr>
+                            <th>Taram Tarihi & Saati</th>
+                            <th>Fiyat (TL)</th>
+                            <th>Fark Tipi</th>
+                            <th>Net Değişim (TL)</th>
+                            <th>Değişim Oranı (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
             history.forEach((h, idx) => {
                 let badge = `<span class="badge badge-neutral">Sabit</span>`;
+                let diffText = "0 ₺";
+                let pctText = "%0.00";
+
                 if (h.price_diff > 0) {
-                    badge = `<span class="badge badge-up">+${formatMoney(h.price_diff)} (+%${h.price_change_pct})</span>`;
+                    badge = `<span class="badge badge-up"><i class="fa-solid fa-arrow-up"></i> Zam Gelen</span>`;
+                    diffText = `+${formatMoney(h.price_diff)}`;
+                    pctText = `+%${h.price_change_pct}`;
                 } else if (h.price_diff < 0) {
-                    badge = `<span class="badge badge-down">${formatMoney(h.price_diff)} (%${h.price_change_pct})</span>`;
+                    badge = `<span class="badge badge-down"><i class="fa-solid fa-arrow-down"></i> Fiyatı Düşen</span>`;
+                    diffText = formatMoney(h.price_diff);
+                    pctText = `%${h.price_change_pct}`;
                 } else if (idx === 0) {
-                    badge = `<span class="badge badge-blue">İlk Çekilen Fiyat</span>`;
+                    badge = `<span class="badge badge-blue"><i class="fa-solid fa-flag-checkered"></i> Başlangıç</span>`;
                 }
 
                 timelineHtml += `
-                    <div class="timeline-item">
-                        <div class="timeline-date"><i class="fa-regular fa-calendar-check"></i> ${h.scraped_date} (${h.scraped_at ? h.scraped_at.split('T')[1] : ''})</div>
-                        <div class="timeline-price">${formatMoney(h.price_int)}</div>
-                        <div class="timeline-status">${badge}</div>
-                    </div>
+                    <tr>
+                        <td><i class="fa-regular fa-calendar-check text-muted"></i> ${h.scraped_date} (${h.scraped_at ? h.scraped_at.split('T')[1] : ''})</td>
+                        <td class="font-bold">${formatMoney(h.price_int)}</td>
+                        <td>${badge}</td>
+                        <td class="${h.price_diff > 0 ? 'text-green' : (h.price_diff < 0 ? 'text-red' : '')}">${diffText}</td>
+                        <td class="${h.price_diff > 0 ? 'text-green' : (h.price_diff < 0 ? 'text-red' : '')}">${pctText}</td>
+                    </tr>
                 `;
             });
-            timelineHtml += `</div>`;
+            timelineHtml += `</tbody></table>`;
 
             historyTimelineContainer.innerHTML = timelineHtml;
         } catch (err) {
