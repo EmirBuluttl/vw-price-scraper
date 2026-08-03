@@ -485,6 +485,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
 
             renderPricesTable(data.prices || []);
+            updateQuickSummary(data.prices || []);
             lblRecordsCount.textContent = `${data.total || 0} Araç Listeleniyor (${data.target_date || 'En Güncel'})`;
         } catch (err) {
             console.error("Prices fetch error:", err);
@@ -872,5 +873,97 @@ document.addEventListener("DOMContentLoaded", () => {
             currency: "TRY",
             maximumFractionDigits: 0
         }).format(amount);
+    }
+
+    // ─── Feature 3: Smooth Number Counter Micro-Animation ──────────────────────
+    function animateValue(element, start, end, duration = 600, isCurrency = false, prefix = '', suffix = '') {
+        if (!element) return;
+        let startTimestamp = null;
+        const step = (timestamp) => {
+            if (!startTimestamp) startTimestamp = timestamp;
+            const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+            const currentVal = Math.floor(progress * (end - start) + start);
+            element.textContent = prefix + (isCurrency ? formatMoney(currentVal) : currentVal.toLocaleString('tr-TR')) + suffix;
+            if (progress < 1) {
+                window.requestAnimationFrame(step);
+            }
+        };
+        window.requestAnimationFrame(step);
+    }
+
+    // ─── Feature 5: Theme Toggle (Light / Dark Mode) ─────────────────────────
+    const btnThemeToggle = document.getElementById("btn-theme-toggle");
+    const themeIcon = document.getElementById("theme-icon");
+    let currentTheme = localStorage.getItem("theme") || "dark";
+
+    function applyTheme(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+        localStorage.setItem("theme", theme);
+        if (themeIcon) {
+            if (theme === "light") {
+                themeIcon.className = "fa-solid fa-moon";
+                if (btnThemeToggle) btnThemeToggle.title = "Karanlık Temaya Geç";
+            } else {
+                themeIcon.className = "fa-solid fa-sun";
+                if (btnThemeToggle) btnThemeToggle.title = "Aydınlık Temaya Geç";
+            }
+        }
+    }
+
+    if (btnThemeToggle) {
+        applyTheme(currentTheme);
+        btnThemeToggle.addEventListener("click", () => {
+            currentTheme = currentTheme === "dark" ? "light" : "dark";
+            applyTheme(currentTheme);
+        });
+    }
+
+    // ─── Feature 2: Quick Data Summary Strip ──────────────────────────────────
+    function updateQuickSummary(prices) {
+        const qsAvgPrice = document.getElementById("qs-avg-price");
+        const qsMinPrice = document.getElementById("qs-min-price");
+        const qsMaxPrice = document.getElementById("qs-max-price");
+        const qsAvgDiscount = document.getElementById("qs-avg-discount");
+
+        if (!prices || prices.length === 0) {
+            if (qsAvgPrice) qsAvgPrice.textContent = "-";
+            if (qsMinPrice) qsMinPrice.textContent = "-";
+            if (qsMaxPrice) qsMaxPrice.textContent = "-";
+            if (qsAvgDiscount) qsAvgDiscount.textContent = "%0";
+            return;
+        }
+
+        let totalPrice = 0;
+        let minP = Infinity;
+        let minModel = "";
+        let maxP = -Infinity;
+        let maxModel = "";
+        let totalDiscountPct = 0;
+        let discCount = 0;
+
+        prices.forEach(p => {
+            const pVal = priceMode === "list" ? (p.list_price_int || p.price_int) : (p.campaign_price_int || p.price_int);
+            totalPrice += pVal;
+            if (pVal < minP) {
+                minP = pVal;
+                minModel = `${p.brand} ${p.model_name}`;
+            }
+            if (pVal > maxP) {
+                maxP = pVal;
+                maxModel = `${p.brand} ${p.model_name}`;
+            }
+            if (p.discount_pct && p.discount_pct > 0) {
+                totalDiscountPct += p.discount_pct;
+                discCount++;
+            }
+        });
+
+        const avgP = Math.round(totalPrice / prices.length);
+        const avgDisc = discCount > 0 ? (totalDiscountPct / discCount).toFixed(1) : 0;
+
+        if (qsAvgPrice) animateValue(qsAvgPrice, 0, avgP, 500, true);
+        if (qsMinPrice) qsMinPrice.textContent = `${formatMoney(minP)} (${minModel})`;
+        if (qsMaxPrice) qsMaxPrice.textContent = `${formatMoney(maxP)} (${maxModel})`;
+        if (qsAvgDiscount) qsAvgDiscount.textContent = `%${avgDisc} İndirim`;
     }
 });

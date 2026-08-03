@@ -1399,3 +1399,84 @@ body {
 .brand-badge:hover .brand-logo-img {
     transform: scale(1.25);
 }
+
+/* Feature 2: Quick Data Summary Strip */
+.quick-summary-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.5rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 0.6rem 1rem;
+    margin-bottom: 1rem;
+    align-items: center;
+}
+
+.qs-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.82rem;
+}
+
+.qs-label {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.qs-value {
+    font-weight: 700;
+    font-size: 0.88rem;
+}
+
+/* Feature 5: Corporate Light Mode Overrides */
+[data-theme="light"] {
+    --bg-dark: #f3f4f6;
+    --bg-panel: #ffffff;
+    --border-glass: #e5e7eb;
+    --text-main: #111827;
+    --text-muted: #6b7280;
+}
+
+[data-theme="light"] body {
+    background: #f3f4f6;
+    color: #111827;
+}
+
+[data-theme="light"] .glass-panel {
+    background: #ffffff !important;
+    border-color: #e5e7eb !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+}
+
+[data-theme="light"] .prices-table th {
+    background: #f9fafb !important;
+    color: #374151 !important;
+    border-bottom: 2px solid #e5e7eb !important;
+}
+
+[data-theme="light"] .prices-table td {
+    border-bottom: 1px solid #f3f4f6 !important;
+    color: #1f2937 !important;
+}
+
+[data-theme="light"] .price-row:hover {
+    background: #f9fafb !important;
+}
+
+[data-theme="light"] select,
+[data-theme="light"] input {
+    background: #ffffff !important;
+    color: #111827 !important;
+    border-color: #d1d5db !important;
+}
+
+[data-theme="light"] .strikethrough-price {
+    color: #6b7280;
+}
+
+[data-theme="light"] .quick-summary-strip {
+    background: #f9fafb;
+    border-color: #e5e7eb;
+}
