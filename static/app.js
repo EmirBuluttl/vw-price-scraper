@@ -787,27 +787,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function getBrandIconHtml(brandName) {
         const b = (brandName || '').toLowerCase();
-        let filename = 'volkswagen';
+        let filename = 'volkswagen.svg';
 
-        if (b.includes('volkswagen') || b.includes('vw')) filename = 'volkswagen';
-        else if (b.includes('skoda')) filename = 'skoda';
-        else if (b.includes('renault')) filename = 'renault';
-        else if (b.includes('ford')) filename = 'ford';
-        else if (b.includes('hyundai')) filename = 'hyundai';
-        else if (b.includes('toyota')) filename = 'toyota';
-        else if (b.includes('chery')) filename = 'chery';
-        else if (b.includes('dacia')) filename = 'dacia';
-        else if (b.includes('kia')) filename = 'kia';
-        else if (b.includes('fiat')) filename = 'fiat';
-        else if (b.includes('peugeot')) filename = 'peugeot';
-        else if (b.includes('opel')) filename = 'opel';
-        else if (b.includes('citroën') || b.includes('citroen')) filename = 'citroen';
-        else if (b.includes('jeep')) filename = 'jeep';
-        else if (b.includes('alfa')) filename = 'alfaromeo';
-        else if (b.includes('ds')) filename = 'ds';
-        else if (b.includes('maserati')) filename = 'maserati';
+        if (b.includes('volkswagen') || b.includes('vw')) filename = 'volkswagen.svg';
+        else if (b.includes('skoda')) filename = 'skoda.svg';
+        else if (b.includes('renault')) filename = 'renault.svg';
+        else if (b.includes('ford')) filename = 'ford.svg';
+        else if (b.includes('hyundai')) filename = 'hyundai.svg';
+        else if (b.includes('toyota')) filename = 'toyota.svg';
+        else if (b.includes('chery')) filename = 'chery.svg';
+        else if (b.includes('dacia')) filename = 'dacia.svg';
+        else if (b.includes('kia')) filename = 'kia.svg';
+        else if (b.includes('fiat')) filename = 'fiat.png'; // Birebir kullanıcının gönderdiği orijinal FIAT logosu
+        else if (b.includes('peugeot')) filename = 'peugeot.svg';
+        else if (b.includes('opel')) filename = 'opel.svg';
+        else if (b.includes('citroën') || b.includes('citroen')) filename = 'citroen.svg';
+        else if (b.includes('jeep')) filename = 'jeep.svg';
+        else if (b.includes('alfa')) filename = 'alfaromeo.svg';
+        else if (b.includes('ds')) filename = 'ds.svg';
+        else if (b.includes('maserati')) filename = 'maserati.svg';
 
-        return `<img src="/static/logos/${filename}.svg" class="brand-logo-img" alt="${brandName}" />`;
+        return `<img src="/static/logos/${filename}" class="brand-logo-img" alt="${brandName}" />`;
     }
 
     // ─── Live Scraper & Polling ───────────────────────────────────────────
