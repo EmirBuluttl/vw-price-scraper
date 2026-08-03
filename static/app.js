@@ -787,25 +787,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function getBrandIconHtml(brandName) {
         const b = (brandName || '').toLowerCase();
-        let filename = 'volkswagen.svg';
+        let filename = 'volkswagen.png';
 
-        if (b.includes('volkswagen') || b.includes('vw')) filename = 'volkswagen.svg';
-        else if (b.includes('skoda')) filename = 'skoda.svg';
-        else if (b.includes('renault')) filename = 'renault.svg';
-        else if (b.includes('ford')) filename = 'ford.svg';
-        else if (b.includes('hyundai')) filename = 'hyundai.svg';
-        else if (b.includes('toyota')) filename = 'toyota.svg';
-        else if (b.includes('chery')) filename = 'chery.svg';
-        else if (b.includes('dacia')) filename = 'dacia.svg';
-        else if (b.includes('kia')) filename = 'kia.svg';
-        else if (b.includes('fiat')) filename = 'fiat.png'; // Birebir kullanıcının gönderdiği orijinal FIAT logosu
-        else if (b.includes('peugeot')) filename = 'peugeot.svg';
-        else if (b.includes('opel')) filename = 'opel.svg';
-        else if (b.includes('citroën') || b.includes('citroen')) filename = 'citroen.svg';
-        else if (b.includes('jeep')) filename = 'jeep.svg';
-        else if (b.includes('alfa')) filename = 'alfaromeo.svg';
-        else if (b.includes('ds')) filename = 'ds.svg';
-        else if (b.includes('maserati')) filename = 'maserati.svg';
+        if (b.includes('volkswagen') || b.includes('vw')) filename = 'volkswagen.png';
+        else if (b.includes('skoda')) filename = 'skoda.png';
+        else if (b.includes('renault')) filename = 'renault.png';
+        else if (b.includes('ford')) filename = 'ford.png';
+        else if (b.includes('hyundai')) filename = 'hyundai.png';
+        else if (b.includes('toyota')) filename = 'toyota.png';
+        else if (b.includes('chery')) filename = 'chery.png';
+        else if (b.includes('dacia')) filename = 'dacia.png';
+        else if (b.includes('kia')) filename = 'kia.png';
+        else if (b.includes('fiat')) filename = 'fiat.png';
+        else if (b.includes('peugeot')) filename = 'peugeot.png';
+        else if (b.includes('opel')) filename = 'opel.png';
+        else if (b.includes('citroën') || b.includes('citroen')) filename = 'citroen.png';
+        else if (b.includes('jeep')) filename = 'jeep.png';
+        else if (b.includes('alfa')) filename = 'alfaromeo.png';
+        else if (b.includes('ds')) filename = 'ds.png';
+        else if (b.includes('maserati')) filename = 'maserati.png';
 
         return `<img src="/static/logos/${filename}" class="brand-logo-img" alt="${brandName}" />`;
     }
