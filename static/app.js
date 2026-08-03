@@ -295,13 +295,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    const selectPriceMode = document.getElementById("select-price-mode");
-    if (selectPriceMode) {
-        selectPriceMode.addEventListener("change", (e) => {
-            priceMode = e.target.value;
-            fetchPrices();
-        });
-    }
+
 
     selectSort.addEventListener("change", (e) => {
         sortBy = e.target.value;
