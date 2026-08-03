@@ -1692,6 +1692,26 @@ body {
     font-weight: 600;
 }
 
+.badge.badge-archive {
+    background: rgba(107, 114, 128, 0.18);
+    color: #9ca3af;
+    border: 1px solid rgba(107, 114, 128, 0.35);
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.76rem;
+    font-weight: 600;
+}
+
+.badge.badge-active {
+    background: rgba(16, 185, 129, 0.18);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.76rem;
+    font-weight: 600;
+}
+
 .text-neutral-val {
     color: var(--text-muted);
 }

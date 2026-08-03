@@ -346,8 +346,8 @@ def api_prices():
         SELECT p.id, v.id as variant_id, b.name as brand, m.name as model_name, v.name as variant,
                v.fuel_type, v.transmission, v.engine_power, v.model_year, m.body_type,
                p.price_raw, p.price_int, p.list_price_int, p.campaign_price_int, p.discount_amount_int,
-               p.currency, p.scraped_at, p.scraped_date, p.is_latest, p.is_new_model, p.is_new_variant,
-               p.previous_price_int, p.price_diff, p.price_change_pct
+               p.currency, p.scraped_at, p.scraped_date, p.is_latest, COALESCE(p.is_active, 1) as is_active,
+               p.is_new_model, p.is_new_variant, p.previous_price_int, p.price_diff, p.price_change_pct
         FROM prices p
         JOIN variants v ON p.variant_id = v.id
         JOIN models m ON v.model_id = m.id
@@ -356,8 +356,10 @@ def api_prices():
     """
     params = []
 
-    if request.args.get("all_dates") != "true":
-        query += " AND p.is_latest = 1"
+    if status_filter == "passive":
+        query += " AND (p.is_active = 0 OR p.is_latest = 0)"
+    elif request.args.get("all_dates") != "true" and status_filter != "changed":
+        query += " AND p.is_latest = 1 AND COALESCE(p.is_active, 1) = 1"
 
     if group and group in OEM_GROUPS:
         allowed_brands = [b.lower() for b in OEM_GROUPS[group]]

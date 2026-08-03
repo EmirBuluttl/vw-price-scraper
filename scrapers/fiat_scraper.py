@@ -1,6 +1,6 @@
 """
-fiat_scraper.py  —  Tofaş Grubu / Fiat Türkiye Fiyat Scraper'ı (2026 Kataloğu & Çift Fiyat)
-=============================================================================================
+fiat_scraper.py  —  Tofaş Grubu / Fiat Türkiye Fiyat Scraper'ı (2026 Kataloğu & Traction+ Serisi)
+=================================================================================================
 Birincil : Fiat Türkiye Resmi 2026 Fiyat Kataloğu & Model Listeleri
 """
 
@@ -31,8 +31,18 @@ class FiatScraper(BaseScraper):
         seen: set[tuple] = set()
 
         # Resmi Fiat 2026 Model Kataloğu (MSRP Liste Fiyatı ve Kampanyalı Satış Fiyatı)
-        # Format: (model_name, variant_name, list_price_int, campaign_price_int)
         official_fiat_catalog = [
+            # Egea Cross 2026 Model
+            ("Egea Cross", "Street 1.4 Fire 95 HP GSR Manuel", 1189900, 1105900),
+            ("Egea Cross", "Urban 1.4 Fire 95 HP GSR Manuel", 1249900, 1165900),
+            ("Egea Cross", "Lounge 1.4 Fire 95 HP GSR Manuel", 1319900, 1235900),
+            ("Egea Cross", "Street 1.6 Otomatik MultiJet 130 HP DCT GSR Traction+ Dizel", 1950500, 1850500),
+            ("Egea Cross", "Urban 1.6 Otomatik MultiJet 130 HP DCT GSR Traction+ Dizel", 1980500, 1880500),
+            ("Egea Cross", "Lounge 1.6 Otomatik MultiJet 130 HP DCT GSR Traction+ Dizel", 2050500, 1950500),
+            ("Egea Cross", "Limited 1.6 Otomatik MultiJet 130 HP DCT GSR Traction+ Dizel", 2090500, 1990500),
+            ("Egea Cross", "Lounge 1.5 Hybrid 130 HP eDCT Otomatik", 1695900, 1575900),
+            ("Egea Cross", "Limited 1.5 Hybrid 130 HP eDCT Otomatik", 1785900, 1665900),
+
             # Egea Sedan 2026 Model
             ("Egea Sedan", "Easy 1.4 Fire 95 HP GSR Manuel", 1089900, 1005900),
             ("Egea Sedan", "Easy 1.6 MultiJet 130 HP GSR Dizel Manuel", 1499900, 1384900),
@@ -43,14 +53,6 @@ class FiatScraper(BaseScraper):
             ("Egea Sedan", "Lounge 1.4 Fire 95 HP GSR Manuel", 1229900, 1145900),
             ("Egea Sedan", "Lounge 1.6 MultiJet 130 HP GSR Dizel Manuel", 1674900, 1559900),
             ("Egea Sedan", "Lounge 1.5 Hybrid 130 HP eDCT Otomatik", 1645900, 1525900),
-
-            # Egea Cross 2026 Model
-            ("Egea Cross", "Street 1.4 Fire 95 HP GSR Manuel", 1189900, 1105900),
-            ("Egea Cross", "Urban 1.4 Fire 95 HP GSR Manuel", 1249900, 1165900),
-            ("Egea Cross", "Urban 1.6 MultiJet 130 HP DCT GSR Otomatik", 2019900, 1919900),
-            ("Egea Cross", "Lounge 1.4 Fire 95 HP GSR Manuel", 1319900, 1235900),
-            ("Egea Cross", "Lounge 1.5 Hybrid 130 HP eDCT Otomatik", 1695900, 1575900),
-            ("Egea Cross", "Limited 1.5 Hybrid 130 HP eDCT Otomatik", 1785900, 1665900),
 
             # Topolino 2026 Model
             ("Topolino", "Topolino 6.0 kW Elektrik", 499900, 469900),
@@ -70,9 +72,8 @@ class FiatScraper(BaseScraper):
             ("Scudo", "Scudo Van 1.5 BlueHDi 120 HP Manuel", 1305900, 1215900),
         ]
 
-        # Canlı HTML Parsing Denemesi (fiat.com.tr)
         try:
-            r = http_get("https://www.fiat.com.tr/fiyat-listesi", headers=headers)
+            r = http_get("https://www.fiat.com.tr/fiyat-listesi", headers=headers, timeout=10)
             soup = BeautifulSoup(r.text, "html.parser")
             for t in soup.find_all("table"):
                 for tr in t.find_all("tr"):

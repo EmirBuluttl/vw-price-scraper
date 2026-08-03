@@ -563,8 +563,11 @@ document.addEventListener("DOMContentLoaded", () => {
         let html = "";
         prices.forEach(item => {
             // Fiyat Değişim Renkleri: Artanlar YEŞİL (.diff-up), Azalanlar KIRMIZI (.diff-down), Değişmeyenler BEYAZ (.diff-neutral)
+            // Fiyat Değişim & Pasif/Aktif Durum Etiketi
             let diffHtml = "-";
-            if (item.price_diff > 0) {
+            if (item.is_active === 0) {
+                diffHtml = `<span class="badge badge-archive" title="Geçmiş / Pasif Fiyat Kaydı"><i class="fa-solid fa-clock-rotate-left"></i> Pasif Kayıt</span>`;
+            } else if (item.price_diff > 0) {
                 diffHtml = `<span class="price-diff diff-up" title="Önceki Fiyat: ${formatMoney(item.previous_price_int)}"><i class="fa-solid fa-arrow-up"></i> +${formatMoney(item.price_diff)} (+%${item.price_change_pct})</span>`;
             } else if (item.price_diff < 0) {
                 diffHtml = `<span class="price-diff diff-down" title="Önceki Fiyat: ${formatMoney(item.previous_price_int)}"><i class="fa-solid fa-arrow-down"></i> ${formatMoney(item.price_diff)} (%${item.price_change_pct})</span>`;
