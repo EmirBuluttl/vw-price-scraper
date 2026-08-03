@@ -702,6 +702,18 @@ def api_export():
     return redirect(url_for("api_export_excel"))
 
 
+@app.route("/health")
+def health_check():
+    """Kurumsal Yuk Dengeleyiciler (Load Balancers) ve Docker Healthcheck icin Saglik Kontrolü API."""
+    try:
+        conn = get_db()
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+        return jsonify({"status": "healthy", "database": "connected", "timestamp": datetime.now().isoformat()}), 200
+    except Exception as e:
+        return jsonify({"status": "unhealthy", "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     print("=" * 70)
     print("  KURUMSAL COKLU MARKA ARAC FIYAT SCRAPER WEB PANELI")
