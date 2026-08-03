@@ -248,14 +248,18 @@ def save_records(
             model_id = cursor.lastrowid
 
         # 3. Variant Kaydet / Al
+        year_match = re.search(r'\b(202[4-7])\b', f"{model_name} {variant_name}")
+        model_year = year_match.group(1) if year_match else "2025"
+
         variant_row = conn.execute("SELECT id FROM variants WHERE model_id = ? AND name = ?", (model_id, variant_name)).fetchone()
         if variant_row:
             variant_id = variant_row[0]
+            conn.execute("UPDATE variants SET model_year = ? WHERE id = ? AND (model_year IS NULL OR model_year = '')", (model_year, variant_id))
         else:
             cursor = conn.execute("""
-                INSERT INTO variants (model_id, name, fuel_type, transmission, engine_power, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (model_id, variant_name, fuel_type, transmission, engine_power, now))
+                INSERT INTO variants (model_id, name, fuel_type, transmission, engine_power, model_year, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (model_id, variant_name, fuel_type, transmission, engine_power, model_year, now))
             variant_id = cursor.lastrowid
 
         # 4. Bugün aynı varyant için fiyat eklenmiş mi kontrol et

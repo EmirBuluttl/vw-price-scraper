@@ -1293,6 +1293,49 @@ body {
     overflow: hidden;
 }
 
+.modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.btn-expand-modal {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-expand-modal:hover {
+    background: rgba(99, 102, 241, 0.25);
+    color: #ffffff;
+    border-color: #818cf8;
+}
+
+/* Ferah / Fullscreen Modal Stili */
+.history-analytics-card.fullscreen-modal {
+    width: 98vw !important;
+    max-width: 98vw !important;
+    height: 94vh !important;
+    max-height: 94vh !important;
+    border-radius: 14px;
+}
+
+.history-analytics-card.fullscreen-modal .history-timeline-container {
+    max-height: 520px !important;
+}
+
+.history-analytics-card.fullscreen-modal .chart-wrapper {
+    height: 520px !important;
+}
+
 .history-analytics-card .modal-header {
     position: sticky;
     top: 0;
@@ -1302,6 +1345,9 @@ body {
     margin-bottom: 0.5rem;
     border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .analytics-layout {
@@ -1548,6 +1594,10 @@ body {
 }
 
 /* Badges for Analytics Table & History */
+.badge {
+    white-space: nowrap !important;
+}
+
 .badge.badge-neutral {
     background: rgba(156, 163, 175, 0.15);
     color: var(--text-main);

@@ -76,6 +76,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const historyModalSubtitle = document.getElementById("history-modal-subtitle");
     const historyTimelineContainer = document.getElementById("history-timeline-container");
     const btnCloseHistoryModal = document.getElementById("btn-close-history-modal");
+    const btnExpandHistoryModal = document.getElementById("btn-expand-history-modal");
+    const iconExpandModal = document.getElementById("icon-expand-modal");
 
     const inputAnalyticsStartDate = document.getElementById("input-analytics-start-date");
     const inputAnalyticsEndDate = document.getElementById("input-analytics-end-date");
@@ -325,6 +327,20 @@ document.addEventListener("DOMContentLoaded", () => {
     if (btnCloseHistoryModal) {
         btnCloseHistoryModal.addEventListener("click", () => {
             historyModal.classList.add("hidden");
+        });
+    }
+
+    if (btnExpandHistoryModal) {
+        btnExpandHistoryModal.addEventListener("click", () => {
+            const card = historyModal.querySelector(".history-analytics-card");
+            if (card) {
+                card.classList.toggle("fullscreen-modal");
+                const isFull = card.classList.contains("fullscreen-modal");
+                if (iconExpandModal) {
+                    iconExpandModal.className = isFull ? "fa-solid fa-compress" : "fa-solid fa-expand";
+                }
+                btnExpandHistoryModal.title = isFull ? "Standart Görünüme Küçült" : "Ekranı Genişlet / Ferah Moda Geç";
+            }
         });
     }
 
