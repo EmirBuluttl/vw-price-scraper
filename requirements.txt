@@ -14,3 +14,6 @@ lxml>=5.0.0          # Daha hızlı parser (bs4 için)
 # Web UI Dashboard & Authentication
 flask>=3.0.0
 werkzeug>=3.0.0
+
+# Renkli ve Biçimlendirilmiş Excel Exporter (.xlsx)
+openpyxl>=3.1.0
