@@ -503,6 +503,29 @@ def api_variant_history(variant_id: int):
 
     history_list = [dict(h) for h in history_rows]
 
+    # Kronolojik olarak her bir adimdaki net fark ve yuzde degisimini dinamik hesapla
+    for i, h in enumerate(history_list):
+        if i == 0:
+            h["previous_price_int"] = h["price_int"]
+            h["price_diff"] = 0
+            h["price_change_pct"] = 0.0
+            h["diff_type"] = "initial"
+        else:
+            prev_p = history_list[i - 1]["price_int"]
+            curr_p = h["price_int"]
+            diff = curr_p - prev_p
+            pct = round((diff / prev_p) * 100, 2) if prev_p > 0 else 0.0
+
+            h["previous_price_int"] = prev_p
+            h["price_diff"] = diff
+            h["price_change_pct"] = pct
+            if diff > 0:
+                h["diff_type"] = "rise"
+            elif diff < 0:
+                h["diff_type"] = "drop"
+            else:
+                h["diff_type"] = "neutral"
+
     # Analiz Metrikleri (KPI Computations)
     start_price = history_list[0]["price_int"] if history_list else 0
     latest_price = history_list[-1]["price_int"] if history_list else 0

@@ -1280,7 +1280,7 @@ body {
 /* 2-Kolonlu Gelişmiş Fiyat Analiz & Trend Modalı (Adaptif & Scroll Korumalı) */
 .history-analytics-card {
     width: 95%;
-    max-width: 1100px;
+    max-width: 1250px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
@@ -1545,4 +1545,119 @@ body {
 [data-theme="light"] .quick-summary-strip {
     background: #f9fafb;
     border-color: #e5e7eb;
+}
+
+/* Badges for Analytics Table & History */
+.badge.badge-neutral {
+    background: rgba(156, 163, 175, 0.15);
+    color: var(--text-main);
+    border: 1px solid rgba(156, 163, 175, 0.3);
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.76rem;
+    font-weight: 600;
+}
+
+.badge.badge-up {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.76rem;
+    font-weight: 600;
+}
+
+.badge.badge-down {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.76rem;
+    font-weight: 600;
+}
+
+.badge.badge-blue {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.76rem;
+    font-weight: 600;
+}
+
+.text-neutral-val {
+    color: var(--text-muted);
+}
+
+/* Light Theme Overrides for Analytics Modal */
+[data-theme="light"] .history-analytics-card {
+    background: #ffffff !important;
+    border-color: #e5e7eb !important;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.12) !important;
+}
+
+[data-theme="light"] .history-analytics-card .modal-header {
+    background: #ffffff !important;
+    border-color: #e5e7eb !important;
+}
+
+[data-theme="light"] .analytics-table th {
+    background: #f9fafb !important;
+    color: #374151 !important;
+    border-bottom: 2px solid #e5e7eb !important;
+}
+
+[data-theme="light"] .analytics-table td {
+    color: #111827 !important;
+    border-bottom: 1px solid #f3f4f6 !important;
+}
+
+[data-theme="light"] .badge.badge-neutral {
+    background: #f3f4f6 !important;
+    color: #374151 !important;
+    border-color: #d1d5db !important;
+}
+
+[data-theme="light"] .badge.badge-up {
+    background: #d1fae5 !important;
+    color: #047857 !important;
+    border-color: #a7f3d0 !important;
+}
+
+[data-theme="light"] .badge.badge-down {
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+    border-color: #fca5a5 !important;
+}
+
+[data-theme="light"] .badge.badge-blue {
+    background: #dbeafe !important;
+    color: #1d4ed8 !important;
+    border-color: #bfdbfe !important;
+}
+
+[data-theme="light"] .kpi-card {
+    background: #f9fafb !important;
+    border-color: #e5e7eb !important;
+}
+
+[data-theme="light"] .chart-wrapper {
+    background: #ffffff !important;
+    border-color: #e5e7eb !important;
+}
+
+[data-theme="light"] .date-range-bar {
+    background: #f9fafb !important;
+    border-color: #e5e7eb !important;
+}
+
+[data-theme="light"] .btn-close {
+    color: #4b5563 !important;
+}
+
+[data-theme="light"] .btn-close:hover {
+    color: #111827 !important;
 }

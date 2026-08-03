@@ -704,40 +704,46 @@ document.addEventListener("DOMContentLoaded", () => {
             <table class="analytics-table">
                 <thead>
                     <tr>
-                        <th>Taram Tarihi</th>
-                        <th>Fiyat (TL)</th>
-                        <th>Fark Tipi</th>
-                        <th>Net Fark</th>
-                        <th>Değişim (%)</th>
+                        <th style="width: 25%;">Tarama Tarihi</th>
+                        <th style="width: 25%;">Fiyat (TL)</th>
+                        <th style="width: 20%;">Fark Tipi</th>
+                        <th style="width: 15%;">Net Fark</th>
+                        <th style="width: 15%;">Değişim (%)</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
 
         historyList.forEach((h, idx) => {
-            let badge = `<span class="badge badge-neutral">Sabit</span>`;
+            let badge = `<span class="badge badge-neutral"><i class="fa-solid fa-minus"></i> Sabit</span>`;
             let diffText = "0 ₺";
             let pctText = "%0.00";
 
-            if (h.price_diff > 0) {
-                badge = `<span class="badge badge-up"><i class="fa-solid fa-arrow-up"></i> Zam Gelen</span>`;
+            if (idx === 0 || h.diff_type === "initial") {
+                badge = `<span class="badge badge-blue"><i class="fa-solid fa-flag-checkered"></i> Başlangıç</span>`;
+            } else if (h.price_diff > 0 || h.diff_type === "rise") {
+                badge = `<span class="badge badge-up"><i class="fa-solid fa-arrow-up"></i> Fiyatı Artan</span>`;
                 diffText = `+${formatMoney(h.price_diff)}`;
                 pctText = `+%${h.price_change_pct}`;
-            } else if (h.price_diff < 0) {
+            } else if (h.price_diff < 0 || h.diff_type === "drop") {
                 badge = `<span class="badge badge-down"><i class="fa-solid fa-arrow-down"></i> Fiyatı Düşen</span>`;
                 diffText = formatMoney(h.price_diff);
                 pctText = `%${h.price_change_pct}`;
-            } else if (idx === 0) {
-                badge = `<span class="badge badge-blue"><i class="fa-solid fa-flag-checkered"></i> Başlangıç</span>`;
+            }
+
+            let dStr = h.scraped_date || "-";
+            if (dStr.includes("-")) {
+                const parts = dStr.split("-");
+                if (parts.length === 3) dStr = `${parts[2]}.${parts[1]}.${parts[0]}`;
             }
 
             timelineHtml += `
                 <tr>
-                    <td><i class="fa-regular fa-calendar-check text-muted"></i> ${h.scraped_date}</td>
+                    <td><i class="fa-regular fa-calendar-check text-muted"></i> ${dStr}</td>
                     <td class="font-bold">${formatMoney(h.price_int)}</td>
                     <td>${badge}</td>
-                    <td class="${h.price_diff > 0 ? 'text-green' : (h.price_diff < 0 ? 'text-red' : '')}">${diffText}</td>
-                    <td class="${h.price_diff > 0 ? 'text-green' : (h.price_diff < 0 ? 'text-red' : '')}">${pctText}</td>
+                    <td class="${h.price_diff > 0 ? 'text-green' : (h.price_diff < 0 ? 'text-red' : 'text-neutral-val')}">${diffText}</td>
+                    <td class="${h.price_diff > 0 ? 'text-green' : (h.price_diff < 0 ? 'text-red' : 'text-neutral-val')}">${pctText}</td>
                 </tr>
             `;
         });
