@@ -601,30 +601,24 @@ document.addEventListener("DOMContentLoaded", () => {
             // Brand Logo & Badge
             const brandIcon = getBrandIconHtml(item.brand);
 
-            // Fiyat Gösterim Modu (Net Kampanyalı vs MSRP Liste Fiyatı vs İkili Karşılaştırma)
+            // Fiyat Gösterimi (İkili Sütun: T. Edilen Liste Fiyatı vs T. Edilen Nakit Kampanyalı Fiyat)
             const cp = item.campaign_price_int || item.price_int;
             const lp = item.list_price_int || item.price_int;
-            const disc = item.discount_amount_int || 0;
-            const discPct = item.discount_pct || 0;
+            const disc = item.discount_amount_int || (lp > cp ? (lp - cp) : 0);
+            const discPct = lp > 0 && disc > 0 ? ((disc / lp) * 100).toFixed(1) : 0;
 
-            let priceDisplayHtml = "";
-            if (priceMode === "list") {
-                priceDisplayHtml = `<span class="price-val text-blue">${formatMoney(lp)}</span> <span class="price-mode-tag tag-msrp">MSRP</span>`;
-            } else if (priceMode === "both") {
-                if (disc > 0) {
-                    priceDisplayHtml = `
-                        <div class="price-both-container">
-                            <span class="price-val text-green">${formatMoney(cp)}</span>
-                            <s class="strikethrough-price" title="Tavsiye Edilen Liste Fiyatı">${formatMoney(lp)}</s>
-                            <span class="badge-discount-tag" title="Kampanya İndirimi"><i class="fa-solid fa-fire"></i> -${formatMoney(disc)} (%${discPct})</span>
-                        </div>
-                    `;
-                } else {
-                    priceDisplayHtml = `<span class="price-val">${formatMoney(cp)}</span>`;
-                }
+            const listPriceHtml = `<span class="price-val price-list-val">${formatMoney(lp)}</span>`;
+            
+            let campPriceHtml = "";
+            if (disc > 0) {
+                campPriceHtml = `
+                    <div class="campaign-price-cell">
+                        <span class="price-val price-camp-val text-green font-bold">${formatMoney(cp)}</span>
+                        <span class="badge-discount-tag" title="Nakit Kampanya İndirimi"><i class="fa-solid fa-fire"></i> -${formatMoney(disc)} (%${discPct})</span>
+                    </div>
+                `;
             } else {
-                // campaign mode (default)
-                priceDisplayHtml = `<span class="price-val">${formatMoney(cp)}</span>`;
+                campPriceHtml = `<span class="price-val price-camp-val">${formatMoney(cp)}</span>`;
             }
 
             html += `
@@ -633,7 +627,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     <td class="font-bold text-main">${item.model_name}</td>
                     <td class="variant-name">${item.variant}</td>
                     <td>${attrHtml || '-'}</td>
-                    <td>${priceDisplayHtml}</td>
+                    <td>${listPriceHtml}</td>
+                    <td>${campPriceHtml}</td>
                     <td>${diffHtml}</td>
                     <td><span class="date-badge-updated" title="Fiyat Güncelleme Tarihi & Saati"><i class="fa-regular fa-calendar-check"></i> ${dateFormatted}</span></td>
                     <td>
