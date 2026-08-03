@@ -485,7 +485,6 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
 
             renderPricesTable(data.prices || []);
-            updateQuickSummary(data.prices || []);
             lblRecordsCount.textContent = `${data.total || 0} Araç Listeleniyor (${data.target_date || 'En Güncel'})`;
         } catch (err) {
             console.error("Prices fetch error:", err);

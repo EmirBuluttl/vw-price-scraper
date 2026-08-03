@@ -471,12 +471,13 @@ body {
 .brand-badge {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.45rem;
     font-weight: 700;
-    font-size: 0.85rem;
-    padding: 0.25rem 0.65rem;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.08);
+    font-size: 0.9rem;
+    color: var(--text-main);
+    background: transparent;
+    padding: 0;
+    border: none;
 }
 
 .attr-pill {
