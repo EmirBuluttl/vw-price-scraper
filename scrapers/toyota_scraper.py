@@ -49,34 +49,37 @@ def _parse_toyota_xml(xml_text: str) -> list[dict]:
             p_desc = p.find("Model").text if p.find("Model") is not None else ""
             govde = p.find("Govde").text if p.find("Govde") is not None else ""
 
-            # Değişik fiyat sütunlarını öncelik sırasına göre kontrol et
-            price_keys = [
-                "KampanyaliFiyati2",
-                "OTVTesvikli1",
-                "KampanyaliFiyati1",
-                "ListeFiyati2",
-                "ListeFiyati1",
-                "OTVMuafiyetli"
-            ]
-
-            price_int = None
-            price_raw_selected = ""
-
-            for key in price_keys:
-                node = p.find(key)
-                if node is not None and node.text:
-                    parsed = parse_price_str(node.text)
-                    if parsed and parsed >= 100_000:
-                        price_int = parsed
-                        price_raw_selected = node.text.strip()
+            # Hem Liste Fiyatını (MSRP) hem Kampanyalı Fiyatı oku
+            list_p_int = None
+            for l_key in ["ListeFiyati2", "ListeFiyati1"]:
+                l_node = p.find(l_key)
+                if l_node is not None and l_node.text:
+                    parsed_l = parse_price_str(l_node.text)
+                    if parsed_l and parsed_l >= 100_000:
+                        list_p_int = parsed_l
                         break
 
-            if not price_int:
+            camp_p_int = None
+            for c_key in ["KampanyaliFiyati2", "OTVTesvikli1", "KampanyaliFiyati1"]:
+                c_node = p.find(c_key)
+                if c_node is not None and c_node.text:
+                    parsed_c = parse_price_str(c_node.text)
+                    if parsed_c and parsed_c >= 100_000:
+                        camp_p_int = parsed_c
+                        break
+
+            # Kampanyalı fiyat yoksa liste fiyatını al, liste fiyatı yoksa kampanyalıyı al
+            final_campaign_price = camp_p_int if camp_p_int else list_p_int
+            final_list_price = list_p_int if list_p_int else final_campaign_price
+
+            if not final_campaign_price:
                 continue
+
+            discount_amount = (final_list_price - final_campaign_price) if final_list_price > final_campaign_price else 0
 
             # "ÖTV'li versiyonlarda" gibi ek vergi/aksesuar satırlarını atla
             if "ÖTV" in p_desc or "versiyon" in p_desc.lower() or "fark" in p_desc.lower():
-                if price_int < 100_000:
+                if final_campaign_price < 100_000:
                     continue
 
             # Variant ismini oluştur
@@ -91,8 +94,11 @@ def _parse_toyota_xml(xml_text: str) -> list[dict]:
                 records.append({
                     "model_name": model_name_clean,
                     "variant": variant,
-                    "price_raw": fmt_price(price_int),
-                    "price_int": price_int,
+                    "price_raw": fmt_price(final_campaign_price),
+                    "price_int": final_campaign_price,
+                    "list_price_int": final_list_price,
+                    "campaign_price_int": final_campaign_price,
+                    "discount_amount_int": discount_amount,
                     "currency": "TRY"
                 })
 

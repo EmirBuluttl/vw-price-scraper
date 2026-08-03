@@ -339,9 +339,9 @@ def api_prices():
     query = """
         SELECT p.id, v.id as variant_id, b.name as brand, m.name as model_name, v.name as variant,
                v.fuel_type, v.transmission, v.engine_power, v.model_year, m.body_type,
-               p.price_raw, p.price_int, p.currency, p.scraped_at, p.scraped_date,
-               p.is_latest, p.is_new_model, p.is_new_variant, p.previous_price_int,
-               p.price_diff, p.price_change_pct
+               p.price_raw, p.price_int, p.list_price_int, p.campaign_price_int, p.discount_amount_int,
+               p.currency, p.scraped_at, p.scraped_date, p.is_latest, p.is_new_model, p.is_new_variant,
+               p.previous_price_int, p.price_diff, p.price_change_pct
         FROM prices p
         JOIN variants v ON p.variant_id = v.id
         JOIN models m ON v.model_id = m.id
@@ -421,6 +421,16 @@ def api_prices():
     result_list = []
     for r in rows:
         d = dict(r)
+        lp = d.get("list_price_int") or d["price_int"]
+        cp = d.get("campaign_price_int") or d["price_int"]
+        disc = d.get("discount_amount_int")
+        if disc is None:
+            disc = (lp - cp) if lp > cp else 0
+
+        d["list_price_int"] = lp
+        d["campaign_price_int"] = cp
+        d["discount_amount_int"] = disc
+        d["discount_pct"] = round((disc / lp) * 100, 1) if lp > 0 and disc > 0 else 0.0
         d["source_label"] = "Resmi Distribütör Liste Fiyatı"
         result_list.append(d)
 
@@ -558,7 +568,8 @@ def api_export_excel():
     rows = conn.execute("""
         SELECT b.name as brand, m.name as model_name, v.name as variant,
                v.fuel_type, v.transmission, v.engine_power, v.model_year, m.body_type,
-               p.price_int, p.currency, p.previous_price_int, p.price_diff, p.price_change_pct, p.scraped_at
+               p.price_int, p.list_price_int, p.campaign_price_int, p.discount_amount_int,
+               p.currency, p.previous_price_int, p.price_diff, p.price_change_pct, p.scraped_at
         FROM prices p
         JOIN variants v ON p.variant_id = v.id
         JOIN models m ON v.model_id = m.id
@@ -599,7 +610,8 @@ def api_export_excel():
 
     headers = [
         "Marka", "Model", "Varyant / Donanım", "Model Yılı", "Yakit Tipi", "Sanziman", "Motor Gucu",
-        "Kasa Tipi", "Guncel Fiyat (TL)", "Onceki Fiyat (TL)", "Fark Tipi", "Fark (TL)", "Degisim (%)", "Guncellenme Tarihi"
+        "Kasa Tipi", "Kampanyalı Fiyat (Net)", "Liste Fiyatı (MSRP)", "Kampanya İndirimi (TL)",
+        "Önceki Fiyat (TL)", "Fark Tipi", "Fark (TL)", "Değişim (%)", "Güncellenme Tarihi"
     ]
 
     ws.append(headers)
@@ -612,19 +624,23 @@ def api_export_excel():
         cell.border = thin_border
     ws.row_dimensions[1].height = 26
 
-    # Verileri Yaz ve Renklendir (Yüzde Kesir Oranı Hesabı: pct_ratio = diff / prev)
+    # Verileri Yaz ve Renklendir
     for r_idx, r in enumerate(rows, 2):
         p_diff = r["price_diff"] or 0
         prev_p = r["previous_price_int"] or 0
         diff_type = "Zam Gelen" if p_diff > 0 else ("Fiyatı Düşen" if p_diff < 0 else "Sabit")
 
-        # Excel yüzde formatı (+0.00%) için kesir oranı hesabı (Örn: %5 için 0.05)
+        lp = r["list_price_int"] or r["price_int"]
+        cp = r["campaign_price_int"] or r["price_int"]
+        disc = r["discount_amount_int"] if r["discount_amount_int"] is not None else ((lp - cp) if lp > cp else 0)
+
+        # Excel yüzde formatı (+0.00%) için kesir oranı hesabı
         pct_ratio = (p_diff / prev_p) if prev_p > 0 else 0.0
 
         row_data = [
             r["brand"], r["model_name"], r["variant"], r["model_year"] or "2026",
             r["fuel_type"] or "-", r["transmission"] or "-", r["engine_power"] or "-",
-            r["body_type"] or "-", r["price_int"], prev_p,
+            r["body_type"] or "-", cp, lp, disc, prev_p,
             diff_type, p_diff, pct_ratio, r["scraped_at"]
         ]
         ws.append(row_data)
@@ -635,9 +651,10 @@ def api_export_excel():
             cell.border = thin_border
             cell.font = data_font
 
-            if c_idx in (9, 10, 12):  # Fiyat Sayilari
+            if c_idx in (9, 10, 11, 12, 14):  # Fiyat Sayilari
                 cell.number_format = '#,##0 "₺"'
                 cell.alignment = align_right
+                cell.font = num_font
                 cell.font = num_font
             elif c_idx == 13:  # % Degisim (Kesir Formatlandirma)
                 cell.number_format = '+0.00%;-0.00%;0.00%'

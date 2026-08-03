@@ -119,6 +119,9 @@ def init_db(conn: sqlite3.Connection) -> None:
             variant_id         INTEGER NOT NULL REFERENCES variants(id) ON DELETE CASCADE,
             price_raw          TEXT    NOT NULL,
             price_int          INTEGER NOT NULL,
+            list_price_int     INTEGER,
+            campaign_price_int INTEGER,
+            discount_amount_int INTEGER DEFAULT 0,
             currency           TEXT    DEFAULT 'TRY',
             scraped_at         TEXT    NOT NULL,
             scraped_date       TEXT    NOT NULL,
@@ -151,6 +154,17 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_prices_variant_latest ON prices (variant_id, is_latest);
         CREATE INDEX IF NOT EXISTS idx_prices_date ON prices (scraped_date);
     """)
+
+    # Auto Migration for existing database
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(prices);")
+    existing_cols = {col[1] for col in cursor.fetchall()}
+    if "list_price_int" not in existing_cols:
+        conn.execute("ALTER TABLE prices ADD COLUMN list_price_int INTEGER;")
+    if "campaign_price_int" not in existing_cols:
+        conn.execute("ALTER TABLE prices ADD COLUMN campaign_price_int INTEGER;")
+    if "discount_amount_int" not in existing_cols:
+        conn.execute("ALTER TABLE prices ADD COLUMN discount_amount_int INTEGER DEFAULT 0;")
 
     conn.commit()
 
@@ -277,18 +291,28 @@ def save_records(
                 if previous_price_int > 0:
                     price_change_pct = round((price_diff / previous_price_int) * 100, 2)
 
+            list_price_int = r.get("list_price_int") or price_int
+            campaign_price_int = r.get("campaign_price_int") or price_int
+            discount_amount_int = r.get("discount_amount_int")
+            if discount_amount_int is None:
+                discount_amount_int = (list_price_int - campaign_price_int) if list_price_int > campaign_price_int else 0
+
             # Önceki is_latest = 1 olan kaydı 0 yap
             conn.execute("UPDATE prices SET is_latest = 0 WHERE variant_id = ?", (variant_id,))
 
             conn.execute(
                 """INSERT INTO prices
-                   (variant_id, price_raw, price_int, currency, scraped_at, scraped_date,
-                    is_latest, is_new_model, is_new_variant, previous_price_int, price_diff, price_change_pct, source)
-                   VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?)""",
+                   (variant_id, price_raw, price_int, list_price_int, campaign_price_int, discount_amount_int,
+                    currency, scraped_at, scraped_date, is_latest, is_new_model, is_new_variant,
+                    previous_price_int, price_diff, price_change_pct, source)
+                   VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?)""",
                 (
                     variant_id,
-                    r.get("price_raw", fmt_price(price_int)),
-                    price_int,
+                    r.get("price_raw", fmt_price(campaign_price_int)),
+                    campaign_price_int,
+                    list_price_int,
+                    campaign_price_int,
+                    discount_amount_int,
                     r.get("currency", "TRY"),
                     now,
                     today,

@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let minPrice = null;
     let maxPrice = null;
     let sortBy = "price_asc";
+    let priceMode = "campaign";
     let pollInterval = null;
 
     // Analytics Modal State
@@ -278,6 +279,14 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    const selectPriceMode = document.getElementById("select-price-mode");
+    if (selectPriceMode) {
+        selectPriceMode.addEventListener("change", (e) => {
+            priceMode = e.target.value;
+            fetchPrices();
+        });
+    }
+
     selectSort.addEventListener("change", (e) => {
         sortBy = e.target.value;
         fetchPrices();
@@ -530,13 +539,39 @@ document.addEventListener("DOMContentLoaded", () => {
             // Brand Logo & Badge
             const brandIcon = getBrandIconHtml(item.brand);
 
+            // Fiyat Gösterim Modu (Net Kampanyalı vs MSRP Liste Fiyatı vs İkili Karşılaştırma)
+            const cp = item.campaign_price_int || item.price_int;
+            const lp = item.list_price_int || item.price_int;
+            const disc = item.discount_amount_int || 0;
+            const discPct = item.discount_pct || 0;
+
+            let priceDisplayHtml = "";
+            if (priceMode === "list") {
+                priceDisplayHtml = `<span class="price-val text-blue">${formatMoney(lp)}</span> <span class="price-mode-tag tag-msrp">MSRP</span>`;
+            } else if (priceMode === "both") {
+                if (disc > 0) {
+                    priceDisplayHtml = `
+                        <div class="price-both-container">
+                            <span class="price-val text-green">${formatMoney(cp)}</span>
+                            <s class="strikethrough-price" title="Tavsiye Edilen Liste Fiyatı">${formatMoney(lp)}</s>
+                            <span class="badge-discount-tag" title="Kampanya İndirimi"><i class="fa-solid fa-fire"></i> -${formatMoney(disc)} (%${discPct})</span>
+                        </div>
+                    `;
+                } else {
+                    priceDisplayHtml = `<span class="price-val">${formatMoney(cp)}</span>`;
+                }
+            } else {
+                // campaign mode (default)
+                priceDisplayHtml = `<span class="price-val">${formatMoney(cp)}</span>`;
+            }
+
             html += `
                 <tr class="price-row" data-variant-id="${item.variant_id}">
                     <td><span class="brand-badge brand-${(item.brand || '').toLowerCase().replace(/\s+/g, '')}">${brandIcon} ${item.brand}</span></td>
                     <td class="font-bold text-main">${item.model_name}</td>
                     <td class="variant-name">${item.variant}</td>
                     <td>${attrHtml || '-'}</td>
-                    <td class="price-val">${formatMoney(item.price_int)}</td>
+                    <td>${priceDisplayHtml}</td>
                     <td>${diffHtml}</td>
                     <td><span class="date-badge"><i class="fa-regular fa-clock"></i> ${dateStr}</span></td>
                     <td>
