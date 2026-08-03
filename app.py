@@ -54,7 +54,7 @@ from scrapers.ds_scraper import DSScraper
 from scrapers.maserati_scraper import MaseratiScraper
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "car_price_scraper_secret_key_2026")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "price_scraper_secret_key_2026")
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 

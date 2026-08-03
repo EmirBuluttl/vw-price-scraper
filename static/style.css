@@ -1383,3 +1383,18 @@ body {
     border-radius: 4px;
     margin-left: 0.25rem;
 }
+
+/* Gerçek Vektörel (SVG) Logo Stilleri */
+.brand-svg-logo {
+    width: 20px;
+    height: 20px;
+    vertical-align: middle;
+    display: inline-block;
+    margin-right: 0.35rem;
+    transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.brand-modal-card:hover .brand-svg-logo,
+.brand-badge:hover .brand-svg-logo {
+    transform: scale(1.18);
+}
