@@ -71,18 +71,22 @@ class FordScraper(BaseScraper):
                 series = ent.get("series") or ""
                 year = ent.get("modelYear") or ""
                 
-                # Get the price (campaigned first, then list price)
-                price_val = ent.get("campaignedTurnkeyPrice") or ent.get("deliveredTurnkeyListPrice")
-                if not price_val:
+                # Get both list price (MSRP) and campaign price
+                list_p_val = ent.get("deliveredTurnkeyListPrice") or ent.get("campaignedTurnkeyPrice")
+                camp_p_val = ent.get("campaignedTurnkeyPrice") or ent.get("deliveredTurnkeyListPrice")
+                if not camp_p_val:
                     continue
                 
                 try:
-                    price_int = int(float(str(price_val).replace(",", "").replace(".", "").strip()))
+                    camp_p_int = int(float(str(camp_p_val).replace(",", "").replace(".", "").strip()))
+                    list_p_int = int(float(str(list_p_val).replace(",", "").replace(".", "").strip())) if list_p_val else camp_p_int
                 except (ValueError, TypeError):
                     continue
 
-                if price_int < 100_000:
+                if camp_p_int < 100_000:
                     continue
+
+                discount_amount = (list_p_int - camp_p_int) if list_p_int > camp_p_int else 0
 
                 variant = f"{series} {desc} ({year})".strip()
                 key = (model_name, variant)
@@ -91,8 +95,11 @@ class FordScraper(BaseScraper):
                     records.append({
                         "model_name": model_name,
                         "variant": variant,
-                        "price_raw": fmt_price(price_int),
-                        "price_int": price_int,
+                        "price_raw": fmt_price(camp_p_int),
+                        "price_int": camp_p_int,
+                        "list_price_int": list_p_int,
+                        "campaign_price_int": camp_p_int,
+                        "discount_amount_int": discount_amount,
                         "currency": "TRY"
                     })
         return records
