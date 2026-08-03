@@ -325,6 +325,7 @@ def api_prices():
     body = request.args.get("body", "").strip()
     trans = request.args.get("trans", "").strip()
     status_filter = request.args.get("status", "").strip()
+    date_filter = request.args.get("date_filter", "all").strip()
     year_filter = request.args.get("year", "").strip()
     min_price = request.args.get("min_price", type=int)
     max_price = request.args.get("max_price", type=int)
@@ -332,7 +333,6 @@ def api_prices():
     sort_by = request.args.get("sort", "price_asc")
 
     conn = get_db()
-
     last_date_row = conn.execute("SELECT MAX(scraped_date) as max_date FROM prices").fetchone()
     target_date = last_date_row["max_date"] if last_date_row else None
 
@@ -394,6 +394,15 @@ def api_prices():
         query += " AND p.price_diff < 0"
     elif status_filter == "rise":
         query += " AND p.price_diff > 0"
+
+    if date_filter == "today":
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        query += " AND (p.scraped_date = ? OR p.scraped_at LIKE ?)"
+        params.extend([today_str, f"{today_str}%"])
+    elif date_filter == "week":
+        query += " AND p.scraped_at >= date('now', '-7 days')"
+    elif date_filter == "month":
+        query += " AND p.scraped_at >= date('now', '-30 days')"
 
     if search:
         query += " AND (LOWER(b.name) LIKE ? OR LOWER(m.name) LIKE ? OR LOWER(v.name) LIKE ?)"

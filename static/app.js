@@ -13,6 +13,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let transFilter = "all";
     let statusFilter = "all";
     let yearFilter = "all";
+    let dateFilter = "all";
     let minPrice = null;
     let maxPrice = null;
     let sortBy = "price_asc";
@@ -49,6 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const inputMinPrice = document.getElementById("input-min-price");
     const inputMaxPrice = document.getElementById("input-max-price");
     const selectYear = document.getElementById("select-year");
+    const selectDateFilter = document.getElementById("select-date-filter");
     const selectStatus = document.getElementById("select-status");
     const selectFuel = document.getElementById("select-fuel");
     const selectBody = document.getElementById("select-body");
@@ -256,6 +258,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (selectYear) {
         selectYear.addEventListener("change", (e) => {
             yearFilter = e.target.value;
+            fetchPrices();
+        });
+    }
+
+    if (selectDateFilter) {
+        selectDateFilter.addEventListener("change", (e) => {
+            dateFilter = e.target.value;
             fetchPrices();
         });
     }
@@ -469,6 +478,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (currentModel !== "all") url.searchParams.append("model", currentModel);
             if (searchQuery) url.searchParams.append("search", searchQuery);
             if (yearFilter !== "all") url.searchParams.append("year", yearFilter);
+            if (dateFilter !== "all") url.searchParams.append("date_filter", dateFilter);
             if (fuelFilter !== "all") url.searchParams.append("fuel", fuelFilter);
             if (bodyFilter !== "all") url.searchParams.append("body", bodyFilter);
             if (transFilter !== "all") url.searchParams.append("trans", transFilter);
@@ -533,8 +543,23 @@ document.addEventListener("DOMContentLoaded", () => {
             if (item.transmission) attrHtml += `<span class="attr-pill attr-trans">${item.transmission}</span> `;
             if (item.engine_power) attrHtml += `<span class="attr-pill attr-hp">${item.engine_power}</span>`;
 
-            // Scraped Date Timestamp
-            let dateStr = item.scraped_at ? item.scraped_at.replace("T", " ") : (item.scraped_date || "-");
+            // Fiyat Güncelleme Tarihi Formatlama
+            let dateFormatted = "-";
+            if (item.scraped_at) {
+                const parts = item.scraped_at.split("T");
+                const dateParts = parts[0].split("-");
+                const timeParts = parts[1] ? parts[1].substring(0, 5) : "";
+                if (dateParts.length === 3) {
+                    dateFormatted = `${dateParts[2]}.${dateParts[1]}.${dateParts[0]}`;
+                    if (timeParts) dateFormatted += ` <small class="date-time-sub">${timeParts}</small>`;
+                } else {
+                    dateFormatted = item.scraped_at.replace("T", " ");
+                }
+            } else if (item.scraped_date) {
+                const dateParts = item.scraped_date.split("-");
+                if (dateParts.length === 3) dateFormatted = `${dateParts[2]}.${dateParts[1]}.${dateParts[0]}`;
+                else dateFormatted = item.scraped_date;
+            }
 
             // Brand Logo & Badge
             const brandIcon = getBrandIconHtml(item.brand);
@@ -573,7 +598,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <td>${attrHtml || '-'}</td>
                     <td>${priceDisplayHtml}</td>
                     <td>${diffHtml}</td>
-                    <td><span class="date-badge"><i class="fa-regular fa-clock"></i> ${dateStr}</span></td>
+                    <td><span class="date-badge-updated" title="Fiyat Güncelleme Tarihi & Saati"><i class="fa-regular fa-calendar-check"></i> ${dateFormatted}</span></td>
                     <td>
                         <button class="btn-history-view" data-variant-id="${item.variant_id}" title="Fiyat Geçmişi & Trend Grafiğini Gör">
                             <i class="fa-solid fa-chart-line"></i> Analiz
