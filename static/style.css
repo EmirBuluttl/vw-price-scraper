@@ -1369,12 +1369,66 @@ body {
     min-height: 0;
 }
 
+.history-timeline-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.timeline-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.timeline-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.btn-table-expand {
+    background: rgba(99, 102, 241, 0.12);
+    border: 1px solid rgba(99, 102, 241, 0.28);
+    color: #818cf8;
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.btn-table-expand:hover {
+    background: rgba(99, 102, 241, 0.28);
+    color: #ffffff;
+    border-color: #6366f1;
+}
+
 .history-timeline-container {
     max-height: 260px;
     overflow-y: auto;
     border-radius: 10px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: rgba(0, 0, 0, 0.2);
+}
+
+/* Tablo Genişletilmiş (Expanded Table Mode) Stili */
+.history-timeline-section.table-expanded-mode .history-timeline-container {
+    max-height: 520px !important;
+}
+
+.history-timeline-section.table-expanded-mode .analytics-table th,
+.history-timeline-section.table-expanded-mode .analytics-table td {
+    padding: 0.95rem 1.25rem !important;
+    font-size: 0.92rem !important;
 }
 
 .date-range-bar {

@@ -78,6 +78,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnCloseHistoryModal = document.getElementById("btn-close-history-modal");
     const btnExpandHistoryModal = document.getElementById("btn-expand-history-modal");
     const iconExpandModal = document.getElementById("icon-expand-modal");
+    
+    const btnExpandHistoryTable = document.getElementById("btn-expand-history-table");
+    const iconExpandTable = document.getElementById("icon-expand-table");
+    const lblExpandTable = document.getElementById("lbl-expand-table");
+    const historyTimelineSection = document.getElementById("history-timeline-section");
 
     const inputAnalyticsStartDate = document.getElementById("input-analytics-start-date");
     const inputAnalyticsEndDate = document.getElementById("input-analytics-end-date");
@@ -340,6 +345,22 @@ document.addEventListener("DOMContentLoaded", () => {
                     iconExpandModal.className = isFull ? "fa-solid fa-compress" : "fa-solid fa-expand";
                 }
                 btnExpandHistoryModal.title = isFull ? "Standart Görünüme Küçült" : "Ekranı Genişlet / Ferah Moda Geç";
+            }
+        });
+    }
+
+    if (btnExpandHistoryTable) {
+        btnExpandHistoryTable.addEventListener("click", () => {
+            if (historyTimelineSection) {
+                historyTimelineSection.classList.toggle("table-expanded-mode");
+                const isExpanded = historyTimelineSection.classList.contains("table-expanded-mode");
+                if (iconExpandTable) {
+                    iconExpandTable.className = isExpanded ? "fa-solid fa-compress" : "fa-solid fa-up-right-and-down-left-from-center";
+                }
+                if (lblExpandTable) {
+                    lblExpandTable.textContent = isExpanded ? "Küçült" : "Genişlet";
+                }
+                btnExpandHistoryTable.title = isExpanded ? "Standart Görünüme Küçült" : "Tabloyu Tam Boyut / Ferah Moda Genişlet";
             }
         });
     }
