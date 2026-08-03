@@ -787,58 +787,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function getBrandIconHtml(brandName) {
         const b = (brandName || '').toLowerCase();
-        if (b.includes('volkswagen') || b.includes('vw')) {
-            return `<svg class="brand-svg-logo text-blue" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-3.8-12.8l2.3 6.9h3l2.3-6.9h-1.8l-1.3 4.4-1.3-4.4h-1.4l-1.3 4.4-1.3-4.4H8.2z"/></svg>`;
-        }
-        if (b.includes('ford')) {
-            return `<svg class="brand-svg-logo text-blue" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5C5.4 5 0 8.1 0 12s5.4 7 12 7 12-3.1 12-7-5.4-7-12-7zm4.5 9.2c-.8.6-2.1.8-3.6.8-2.5 0-4.2-.7-4.2-2.1 0-.9.8-1.5 2.1-1.7l1.5-.2c.8-.1 1.3-.3 1.3-.7 0-.4-.4-.6-1.1-.6-.9 0-2.1.3-3 .8l-.5-1.2c1.1-.6 2.6-1 3.8-1 1.9 0 3 1 3 2.3 0 .4-.1.9-.3 1.4l-.5 1.5z"/></svg>`;
-        }
-        if (b.includes('fiat')) {
-            return `<svg class="brand-svg-logo text-red" viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16v16H4V4zm3 3v10h2V7H7zm4 0v10h2V7h-2zm4 0v10h2V7h-2z"/></svg>`;
-        }
-        if (b.includes('renault')) {
-            return `<svg class="brand-svg-logo text-yellow" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4 12l8 10 8-10L12 2zm0 3.8L16.2 12 12 18.2 7.8 12 12 5.8z"/></svg>`;
-        }
-        if (b.includes('peugeot')) {
-            return `<svg class="brand-svg-logo text-blue" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3zm1 14.5h-2v-4h-1v-2h3v6z"/></svg>`;
-        }
-        if (b.includes('opel')) {
-            return `<svg class="brand-svg-logo text-yellow" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.5 8.5l-5 3.5h3.5l-4.5 3.5 1.5-4h-3.5l4-3h-2.5z"/></svg>`;
-        }
-        if (b.includes('citroën') || b.includes('citroen')) {
-            return `<svg class="brand-svg-logo text-red" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3L4 9l2 1.5L12 6l6 4.5L20 9l-8-6zm0 7l-8 6 2 1.5 6-4.5 6 4.5 2-1.5-8-6z"/></svg>`;
-        }
-        if (b.includes('jeep')) {
-            return `<svg class="brand-svg-logo text-green" viewBox="0 0 24 24" fill="currentColor"><path d="M3 6v12h2V6H3zm4 0v12h2V6H7zm4 0v12h2V6h-2zm4 0v12h2V6h-2zm4 0v12h2V6h-2z"/></svg>`;
-        }
-        if (b.includes('alfa')) {
-            return `<svg class="brand-svg-logo text-red" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 5h2v3h3v2h-3v5h-2v-5H8v-2h3V7z"/></svg>`;
-        }
-        if (b.includes('ds')) {
-            return `<svg class="brand-svg-logo text-purple" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4l6 8-6 8H6l6-8-6-8zm6 0h6l-3 4-3-4z"/></svg>`;
-        }
-        if (b.includes('maserati')) {
-            return `<svg class="brand-svg-logo text-blue" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l-2 5 2 2 2-2-2-5zm-5 4v6l3-3-3-3zm10 0l-3 3 3 3V6zm-6 7v9h2v-9h-2z"/></svg>`;
-        }
-        if (b.includes('skoda')) {
-            return `<svg class="brand-svg-logo text-green" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14h-2l1-4h3l-2 4zm2-6h-6l1-3h6l-1 3z"/></svg>`;
-        }
-        if (b.includes('hyundai')) {
-            return `<svg class="brand-svg-logo text-blue" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3C6.5 3 2 7 2 12s4.5 9 10 9 10-4 10-9-4.5-9-10-9zm3.5 12.5l-2-7h-3l2 7h-2l-2-7H7l2.5 9h2l1.5-5h2l-1.5 5h2z"/></svg>`;
-        }
-        if (b.includes('toyota')) {
-            return `<svg class="brand-svg-logo text-red" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4c-5.5 0-10 2.2-10 5s4.5 5 10 5 10-2.2 10-5-4.5-5-10-5zm0 8.5c-3.3 0-6-1.1-6-2.5s2.7-2.5 6-2.5 6 1.1 6 2.5-2.7 2.5-6 2.5zm0-10.5C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.4 0-8-3.6-8-8 0-1.8.6-3.4 1.7-4.7 1.8 1.4 4.2 2.2 6.3 2.2s4.5-.8 6.3-2.2c1.1 1.3 1.7 2.9 1.7 4.7 0 4.4-3.6 8-8 8z"/></svg>`;
-        }
-        if (b.includes('kia')) {
-            return `<svg class="brand-svg-logo text-red" viewBox="0 0 24 24" fill="currentColor"><path d="M3 8v8h2v-3.5L7.5 16H10l-3.2-4.5L10 8H7.5L5.5 11V8H3zm8 0v8h2.5V8H11zm5 0l-3 8h2.2l.6-1.8h2.4l.6 1.8H21l-3-8h-2zm.8 2.2l.8 2.6h-1.6l.8-2.6z"/></svg>`;
-        }
-        if (b.includes('chery')) {
-            return `<svg class="brand-svg-logo text-red" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4L3 10l9 6 9-6-9-6zm0 4.2L16.5 10 12 11.8 7.5 10 12 8.2zM4 14l8 5 8-5v2.5l-8 5-8-5V14z"/></svg>`;
-        }
-        if (b.includes('dacia')) {
-            return `<svg class="brand-svg-logo text-yellow" viewBox="0 0 24 24" fill="currentColor"><path d="M4 7h6v3H7v4h3v3H4V7zm10 0h6v10h-6v-3h3v-4h-3V7z"/></svg>`;
-        }
-        return `<svg class="brand-svg-logo" viewBox="0 0 24 24" fill="currentColor"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4h14v4z"/></svg>`;
+        let filename = 'volkswagen';
+
+        if (b.includes('volkswagen') || b.includes('vw')) filename = 'volkswagen';
+        else if (b.includes('skoda')) filename = 'skoda';
+        else if (b.includes('renault')) filename = 'renault';
+        else if (b.includes('ford')) filename = 'ford';
+        else if (b.includes('hyundai')) filename = 'hyundai';
+        else if (b.includes('toyota')) filename = 'toyota';
+        else if (b.includes('chery')) filename = 'chery';
+        else if (b.includes('dacia')) filename = 'dacia';
+        else if (b.includes('kia')) filename = 'kia';
+        else if (b.includes('fiat')) filename = 'fiat';
+        else if (b.includes('peugeot')) filename = 'peugeot';
+        else if (b.includes('opel')) filename = 'opel';
+        else if (b.includes('citroën') || b.includes('citroen')) filename = 'citroen';
+        else if (b.includes('jeep')) filename = 'jeep';
+        else if (b.includes('alfa')) filename = 'alfaromeo';
+        else if (b.includes('ds')) filename = 'ds';
+        else if (b.includes('maserati')) filename = 'maserati';
+
+        return `<img src="/static/logos/${filename}.svg" class="brand-logo-img" alt="${brandName}" />`;
     }
 
     // ─── Live Scraper & Polling ───────────────────────────────────────────
