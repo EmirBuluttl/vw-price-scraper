@@ -1,8 +1,8 @@
 """
-dacia_scraper.py  —  Dacia Türkiye fiyat scraper'ı
-===================================================
-Birincil : Tüm Dacia Model İniş Sayfaları (sub-trim & motor bazlı fiyat extraction)
-Fallback : Fiyat listesi & Ana sayfa kartları
+dacia_scraper.py  —  Dacia Türkiye fiyat scraper'ı (Çift Fiyat Altyapısı Destekli)
+===================================================================================
+Birincil : Tüm Dacia Model Sayfaları (Sandero, Sandero Stepway, Duster, Jogger, Spring)
+Fallback : arabam.com.tr API
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from .base_scraper import BaseScraper, fmt_price, http_get
+from .arabam_api import fetch_arabam_api
 
 
 class DaciaScraper(BaseScraper):
@@ -23,12 +24,12 @@ class DaciaScraper(BaseScraper):
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("all_model_landing_pages", self._fetch_all_model_pages),
-            ("homepage_cards", self._fetch_homepage_cards),
+            ("official_site_json", self._fetch_official_site),
+            ("arabam_api_fallback", self._fetch_arabam_fallback),
         ]
 
-    def _fetch_all_model_pages(self) -> list[dict]:
-        """Tüm Dacia model sayfalarını gezerek her donanım paketini ve motorunu çek."""
+    def _fetch_official_site(self) -> list[dict]:
+        """Tüm Dacia modellerini ve hem Tavsiye Edilen Liste Fiyatı hem Kampanyalı Fiyatı çek."""
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -39,58 +40,79 @@ class DaciaScraper(BaseScraper):
         records: list[dict] = []
         seen: set[tuple] = set()
 
+        # Dacia resmi model sayfaları
         dacia_pages = [
-            "https://www.dacia.com.tr/dacia-fiyat-listesi.html",
-            "https://www.dacia.com.tr/modeller/yeni-jogger.html",
-            "https://www.dacia.com.tr/modeller/yeni-sandero-bi1-ph2.html",
-            "https://www.dacia.com.tr/modeller/yeni-sandero-stepway-bi1-ph2.html",
+            ("Yeni Sandero", "https://www.dacia.com.tr/modeller/yeni-sandero-bi1-ph2.html"),
+            ("Yeni Sandero Stepway", "https://www.dacia.com.tr/modeller/yeni-sandero-stepway-bi1-ph2.html"),
+            ("Yeni Duster", "https://www.dacia.com.tr/modeller/yeni-duster.html"),
+            ("Yeni Jogger", "https://www.dacia.com.tr/modeller/yeni-jogger.html"),
+            ("Fiyat Listesi", "https://www.dacia.com.tr/dacia-fiyat-listesi.html"),
         ]
 
-        for url in dacia_pages:
+        for default_name, url in dacia_pages:
             try:
                 r = http_get(url, headers=headers)
                 match = re.search(r'window\.APP_STATE\s*=\s*JSON\.parse\("(.*?)"\);', r.text, re.DOTALL)
                 if not match:
                     continue
                 data = json.loads(json.loads(f'"{match.group(1)}"'))
-                model_name = url.split("/")[-1].replace(".html", "").replace("-bi1-ph2", "").replace("-", " ").title()
 
-                def extract_dacia_trims(d):
+                def extract_trims(d):
                     if isinstance(d, dict):
                         pv = d.get("pricedVersion") or {}
                         v_label = pv.get("label") or pv.get("name") or d.get("versionName") or d.get("trimName")
-                        price_val = d.get("price") or d.get("displayPrice") or (d.get("webDisplayPrices") or {}).get("displayPrice")
                         
-                        if v_label and price_val:
+                        # Model Adı Ayrıştırma (Dacia Fiyat Listesi gibi jenerik başlıkları engelle)
+                        m_name = default_name
+                        if m_name == "Fiyat Listesi":
+                            # Versiyon adından Duster, Sandero, Jogger ayıkla
+                            v_lower = (v_label or "").lower()
+                            if "duster" in v_lower: m_name = "Duster"
+                            elif "stepway" in v_lower: m_name = "Sandero Stepway"
+                            elif "sandero" in v_lower: m_name = "Sandero"
+                            elif "jogger" in v_lower: m_name = "Jogger"
+                            elif "spring" in v_lower: m_name = "Spring"
+                            else: m_name = "Dacia"
+
+                        raw_camp = d.get("price") or d.get("displayPrice") or (d.get("webDisplayPrices") or {}).get("displayPrice")
+                        raw_list = d.get("listPrice") or d.get("recommendedPrice") or (d.get("webDisplayPrices") or {}).get("listPrice") or raw_camp
+
+                        if v_label and raw_camp:
                             try:
-                                p_int = int(float(price_val))
-                                if p_int > 100_000:
-                                    key = (model_name, v_label, p_int)
+                                camp_p = int(float(raw_camp))
+                                list_p = int(float(raw_list)) if raw_list else camp_p
+                                if list_p < camp_p: list_p = camp_p
+
+                                if camp_p > 100_000:
+                                    key = (m_name, v_label, camp_p)
                                     if key not in seen:
                                         seen.add(key)
+                                        disc = max(0, list_p - camp_p)
+                                        disc_pct = round((disc / list_p) * 100, 1) if list_p > 0 else 0
                                         records.append({
-                                            "model_name": model_name,
+                                            "model_name": m_name,
                                             "variant": v_label,
-                                            "price_raw": fmt_price(p_int),
-                                            "price_int": p_int,
+                                            "price_raw": fmt_price(camp_p),
+                                            "price_int": camp_p,
+                                            "list_price_int": list_p,
+                                            "campaign_price_int": camp_p,
+                                            "discount_amount_int": disc,
+                                            "discount_pct": disc_pct,
                                             "currency": "TRY"
                                         })
                             except Exception:
                                 pass
                         for v in d.values():
-                            extract_dacia_trims(v)
+                            extract_trims(v)
                     elif isinstance(d, list):
                         for item in d:
-                            extract_dacia_trims(item)
+                            extract_trims(item)
 
-                extract_dacia_trims(data)
+                extract_trims(data)
             except Exception:
                 pass
 
         return records
 
-    def _fetch_homepage_cards(self) -> list[dict]:
-        r = http_get("https://www.dacia.com.tr")
-        soup = BeautifulSoup(r.text, "html.parser")
-        records: list[dict] = []
-        return records
+    def _fetch_arabam_fallback(self) -> list[dict]:
+        return fetch_arabam_api("dacia")

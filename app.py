@@ -217,9 +217,15 @@ def api_summary():
         "SELECT COUNT(*) as cnt FROM prices WHERE is_new_variant = 1 AND is_latest = 1"
     ).fetchone()["cnt"]
 
-    price_changes_cnt = conn.execute(
-        "SELECT COUNT(*) as cnt FROM prices WHERE price_diff != 0 AND price_diff IS NOT NULL AND is_latest = 1"
-    ).fetchone()["cnt"]
+    # Bir kere bile verisi/fiyatı değişmiş tüm araçların kumülatif sayısı
+    price_changes_cnt = conn.execute("""
+        SELECT COUNT(DISTINCT variant_id) as cnt
+        FROM prices
+        WHERE (price_diff != 0 AND price_diff IS NOT NULL)
+           OR variant_id IN (
+               SELECT variant_id FROM prices GROUP BY variant_id HAVING COUNT(DISTINCT price_int) > 1
+           )
+    """).fetchone()["cnt"]
 
     brands_summary = conn.execute("""
         SELECT b.name as brand,
@@ -391,9 +397,11 @@ def api_prices():
         params.append(max_price)
 
     if status_filter == "drop":
-        query += " AND p.price_diff < 0"
+        query += " AND (p.price_diff < 0 OR v.id IN (SELECT variant_id FROM prices WHERE price_diff < 0))"
     elif status_filter == "rise":
-        query += " AND p.price_diff > 0"
+        query += " AND (p.price_diff > 0 OR v.id IN (SELECT variant_id FROM prices WHERE price_diff > 0))"
+    elif status_filter == "changed":
+        query += " AND (v.id IN (SELECT variant_id FROM prices WHERE price_diff != 0 AND price_diff IS NOT NULL GROUP BY variant_id HAVING COUNT(DISTINCT price_int) > 1))"
 
     if date_filter == "today":
         today_str = datetime.now().strftime("%Y-%m-%d")
