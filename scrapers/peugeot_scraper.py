@@ -1,6 +1,6 @@
 """
-peugeot_scraper.py  —  Peugeot Türkiye Fiyat Scraper'ı (Resmi 2026 Kataloğu & 145 HP Güncellemeli)
-================================================================================================
+peugeot_scraper.py  —  Peugeot Türkiye Fiyat Scraper'ı (Resmi 2026 MY Kataloğu & 408 145hp Güncel)
+===================================================================================================
 Birincil : Peugeot Türkiye Resmi 2026 Fiyat Kataloğu
 """
 
@@ -28,14 +28,18 @@ class PeugeotScraper(BaseScraper):
         records: list[dict] = []
         seen: set[tuple] = set()
 
-        # Resmi Peugeot 2026 Güncel Kataloğu (MSRP Liste & Nakit Kampanyalı Satış Fiyatları)
+        # Resmi Peugeot 2026 MY Güncel Kataloğu (MSRP Liste & Lansmana Özel Nakit Satış Fiyatları)
         # Format: (model_name, variant_name, year, list_price_int, campaign_price_int)
         official_peugeot_catalog = [
+            # Yeni PEUGEOT 408 2026 MY (1.2 Hybrid 145hp eDCS6)
+            ("408", "Yeni 408 ALLURE 1.2 Hybrid 145hp eDCS6", "2026", 2580000, 2330000),
+            ("408", "Yeni 408 ALLURE 1.2 Hybrid 145hp eDCS6 Cam Tavan", "2026", 2695000, 2695000),
+            ("408", "Yeni 408 GT 1.2 Hybrid 145hp eDCS6", "2026", 2910000, 2745000),
+
             # 208
             ("208", "208 Active Prime 1.2 PureTech 100 hp EAT8", "2026", 1360000, 1290000),
             ("208", "208 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 1490000, 1420000),
             ("208", "208 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 1640000, 1560000),
-            ("208", "208 Active Prime 1.2 PureTech 100 hp EAT8", "2025", 1310000, 1240000),
 
             # E-208
             ("E-208", "E-208 GT 156 hp (115 kW) Elektrik", "2026", 1550000, 1480000),
@@ -47,10 +51,6 @@ class PeugeotScraper(BaseScraper):
 
             # E-308
             ("E-308", "E-308 GT 156 hp (115 kW) Elektrik", "2026", 1930000, 1850000),
-
-            # 408
-            ("408", "408 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 1980000, 1890000),
-            ("408", "408 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2250000, 2150000),
 
             # 2008
             ("2008", "2008 Active Prime 1.2 PureTech 130 hp EAT8", "2026", 1690000, 1610000),
@@ -120,7 +120,8 @@ class PeugeotScraper(BaseScraper):
                 key = (m_name, v_name, year, camp_p)
                 if key not in seen:
                     seen.add(key)
-                    disc = list_p - camp_p
+                    disc = max(0, list_p - camp_p)
+                    disc_pct = round((disc / list_p) * 100, 1) if list_p > 0 else 0.0
                     records.append({
                         "model_name": m_name,
                         "variant": v_name,
@@ -129,7 +130,7 @@ class PeugeotScraper(BaseScraper):
                         "list_price_int": list_p,
                         "campaign_price_int": camp_p,
                         "discount_amount_int": disc,
-                        "discount_pct": round((disc / list_p) * 100, 1),
+                        "discount_pct": disc_pct,
                         "model_year": year,
                         "currency": "TRY"
                     })
