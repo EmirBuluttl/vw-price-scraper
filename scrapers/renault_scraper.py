@@ -1,20 +1,16 @@
 """
-renault_scraper.py  —  Renault Türkiye fiyat scraper'ı
-======================================================
-Birincil : Tüm Renault Model İniş Sayfaları (tavsiye edilen kampanya fiyatı extraction)
-Fallback : Ana sayfa APP_STATE
+renault_scraper.py  —  Renault Türkiye Fiyat Scraper'ı (Playwright Canlı Chrome Otomasyonu)
+===========================================================================================
+Birincil : Playwright ile https://www.renault.com.tr/fiyat-listesi.html Canlı Sayfa Taraması
 """
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
-from urllib.parse import urljoin
-
 from bs4 import BeautifulSoup
-
-from .base_scraper import BaseScraper, fmt_price, http_get
+from playwright.sync_api import sync_playwright
+from .base_scraper import BaseScraper, fmt_price
 
 
 class RenaultScraper(BaseScraper):
@@ -23,116 +19,90 @@ class RenaultScraper(BaseScraper):
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("all_model_landing_pages", self._fetch_all_model_pages),
+            ("renault_playwright_live", self._fetch_renault_playwright_live),
         ]
 
-    def _fetch_all_model_pages(self) -> list[dict]:
-        """Tüm Renault model sayfalarını gezerek her donanım paketinin tavsiye edilen kampanya fiyatını çek."""
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/126.0.0.0 Safari/537.36"
-            )
-        }
+    def _fetch_renault_playwright_live(self) -> list[dict]:
         records: list[dict] = []
         seen: set[tuple] = set()
-        model_urls = set()
 
-        # Ana sayfadan tüm aktif model linklerini dinamik olarak topla (Kategori indeks sayfalarını değil, sadece tekil model sayfalarını al)
+        url = "https://www.renault.com.tr/fiyat-listesi.html"
+
         try:
-            r_main = http_get("https://www.renault.com.tr", headers=headers)
-            soup_main = BeautifulSoup(r_main.text, "html.parser")
-            for a in soup_main.find_all("a", href=True):
-                href = a.get("href")
-                if any(cat in href for cat in ["/binek-araclar/", "/hybrid-araclar/", "/elektrikli-araclar/", "/ticari-araclar/"]) and href.endswith(".html"):
-                    if "konfigurator" not in href and "fiyat" not in href:
-                        full_url = urljoin("https://www.renault.com.tr", href)
-                        model_urls.add(full_url)
-        except Exception:
-            pass
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                )
+                page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                page.wait_for_timeout(3000)
+                html = page.content()
+                browser.close()
 
-        if not model_urls:
-            model_urls = {
-                "https://www.renault.com.tr/hybrid-araclar/yeni-clio.html",
-                "https://www.renault.com.tr/binek-araclar/megane-sedan.html",
-                "https://www.renault.com.tr/elektrikli-araclar/megane-e-tech-elektrikli.html",
-                "https://www.renault.com.tr/elektrikli-araclar/scenic-e-tech-elektrikli.html",
-                "https://www.renault.com.tr/hybrid-araclar/rafale.html",
-            }
+                soup = BeautifulSoup(html, "html.parser")
+                current_model = "Renault"
 
-        for url in sorted(model_urls):
-            try:
-                r = http_get(url, headers=headers)
-                match = re.search(r'window\.APP_STATE\s*=\s*JSON\.parse\("(.*?)"\);', r.text, re.DOTALL)
-                if not match:
-                    continue
-                data = json.loads(json.loads(f'"{match.group(1)}"'))
-                model_name = url.split("/")[-1].replace(".html", "").replace("-", " ").title()
+                for table in soup.find_all("table"):
+                    table_text = table.get_text()
+                    m_search = re.search(r"(Clio|Megane|Captur|Austral|Duster|Symbioz|Scenic|Taliant|Koleos|Express|Master|Kangoo)", table_text, re.IGNORECASE)
+                    if m_search:
+                        current_model = m_search.group(1)
 
-                # Model parametrelerinden donanımlar (grades) & versiyonlar
-                model_params = data.get("page", {}).get("data", {}).get("modelParams", {}).get("data", {})
-                grades = model_params.get("grades", [])
+                    for tr in table.find_all("tr"):
+                        cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
+                        if len(cols) >= 2:
+                            variant_raw = cols[0]
+                            if "MODEL" in variant_raw.upper() or "DONANIM" in variant_raw.upper():
+                                continue
 
-                if grades:
-                    for g in grades:
-                        pv = g.get("pricedVersion") or {}
-                        v_label = pv.get("label") or g.get("label") or g.get("code")
+                            prices_found = []
+                            for col_val in cols[1:]:
+                                pm = re.search(r"(\d[\d.,\s]+)", col_val)
+                                if pm:
+                                    p_val = int(re.sub(r"[^\d]", "", pm.group(1)))
+                                    if 100_000 < p_val < 10_000_000:
+                                        prices_found.append(p_val)
 
-                        # Öncelikle tavsiye edilen kampanya fiyatını (priceWoOptionsWoVAT / price / minPrice) al!
-                        fin = g.get("finance") or {}
-                        p_val = fin.get("priceWoOptionsWoVAT") or fin.get("priceWoOptions") or fin.get("price") or g.get("minPrice")
-                        
-                        if not p_val:
-                            p_val = (g.get("webDisplayPrices") or {}).get("displayPrice")
+                            if len(prices_found) >= 2:
+                                list_price = prices_found[0]
+                                camp_price = prices_found[1]
+                            elif len(prices_found) == 1:
+                                list_price = prices_found[0]
+                                camp_price = prices_found[0]
+                            else:
+                                continue
 
-                        if v_label and p_val:
-                            try:
-                                p_int = int(float(str(p_val)))
-                                if 100_000 < p_int < 10_000_000:
-                                    key = (model_name, v_label, p_int)
-                                    if key not in seen:
-                                        seen.add(key)
-                                        records.append({
-                                            "model_name": model_name,
-                                            "variant": v_label,
-                                            "price_raw": fmt_price(p_int),
-                                            "price_int": p_int,
-                                            "currency": "TRY"
-                                        })
-                            except Exception:
-                                pass
-                else:
-                    def extract_fallback(d):
-                        if isinstance(d, dict):
-                            pv = d.get("pricedVersion") or {}
-                            v_label = pv.get("label") or pv.get("name") or d.get("versionName") or d.get("trimName")
-                            fin = d.get("finance") or {}
-                            p_val = fin.get("priceWoOptionsWoVAT") or fin.get("priceWoOptions") or fin.get("price") or d.get("minPrice") or (d.get("webDisplayPrices") or {}).get("displayPrice")
-                            if v_label and p_val:
-                                try:
-                                    p_int = int(float(str(p_val)))
-                                    if 100_000 < p_int < 10_000_000:
-                                        key = (model_name, v_label, p_int)
-                                        if key not in seen:
-                                            seen.add(key)
-                                            records.append({
-                                                "model_name": model_name,
-                                                "variant": v_label,
-                                                "price_raw": fmt_price(p_int),
-                                                "price_int": p_int,
-                                                "currency": "TRY"
-                                            })
-                                except Exception:
-                                    pass
-                            for v in d.values():
-                                extract_fallback(v)
-                        elif isinstance(d, list):
-                            for item in d:
-                                extract_fallback(item)
+                            year_m = re.search(r"\b(202[4-7])\b", f"{variant_raw} {table_text}")
+                            year_val = year_m.group(1) if year_m else "2026"
 
-                    extract_fallback(data)
-            except Exception:
-                pass
+                            model_name = current_model
+                            if "CLIO" in variant_raw.upper(): model_name = "Clio"
+                            elif "MEGANE" in variant_raw.upper(): model_name = "Megane Sedan"
+                            elif "CAPTUR" in variant_raw.upper(): model_name = "Captur"
+                            elif "AUSTRAL" in variant_raw.upper(): model_name = "Austral"
+                            elif "DUSTER" in variant_raw.upper(): model_name = "Renault Duster"
+                            elif "SYMBIOZ" in variant_raw.upper(): model_name = "Symbioz"
+                            elif "SCENIC" in variant_raw.upper(): model_name = "Scenic E-Tech"
+
+                            key = (model_name, variant_raw, year_val, camp_price)
+                            if key not in seen:
+                                seen.add(key)
+                                disc = max(0, list_price - camp_price)
+                                disc_pct = round((disc / list_price) * 100, 1) if list_price > 0 else 0.0
+
+                                records.append({
+                                    "model_name": model_name,
+                                    "variant": variant_raw,
+                                    "price_raw": fmt_price(camp_price),
+                                    "price_int": camp_price,
+                                    "list_price_int": list_price,
+                                    "campaign_price_int": camp_price,
+                                    "discount_amount_int": disc,
+                                    "discount_pct": disc_pct,
+                                    "model_year": year_val,
+                                    "currency": "TRY"
+                                })
+        except Exception as e:
+            print(f"Playwright Renault Live Scrape Error: {e}")
 
         return records

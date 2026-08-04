@@ -1,108 +1,16 @@
 """
-toyota_scraper.py  —  Toyota Türkiye fiyat scraper'ı
-===================================================
-Birincil : Toyota XML fiyat listesi (turkiye.toyota.com.tr/middle/fiyat-listesi/fiyat_v3.xml)
-Fallback : arabam.com.tr HTML ve diğer statik sayfalar
+toyota_scraper.py  —  Toyota Türkiye Fiyat Scraper'ı (Playwright Canlı Chrome Otomasyonu)
+========================================================================================
+Birincil : Playwright ile https://turkiye.toyota.com.tr/middle/fiyatl_aksesuar.html Canlı Sayfa Taraması
 """
 
 from __future__ import annotations
 
-import logging
 import re
-import xml.etree.ElementTree as ET
 from typing import Any
-
-from .base_scraper import BaseScraper, fmt_price, http_get, parse_price_str
-
-log = logging.getLogger(__name__)
-
-XML_URL = "https://turkiye.toyota.com.tr/middle/fiyat-listesi/fiyat_v3.xml"
-
-
-def _parse_toyota_xml(xml_text: str) -> list[dict]:
-    # UTF-8 BOM temizliği ve XML başlangıcını bulma
-    content_str = xml_text.strip()
-    xml_start = content_str.find("<?xml")
-    if xml_start != -1:
-        content_str = content_str[xml_start:]
-
-    try:
-        root = ET.fromstring(content_str)
-    except Exception as e:
-        log.warning("Toyota XML parsing failed: %s", e)
-        return []
-
-    records: list[dict] = []
-    seen: set[tuple] = set()
-
-    for m in root.findall("Model"):
-        # Model aktif değilse atla
-        if m.get("Aktifmi") == "0":
-            continue
-
-        model_name = m.get("name") or ""
-        # Temel model adlarını temizle
-        model_name = model_name.replace("Yeni", "").strip()
-
-        prices = m.findall("ModelFiyat")
-        for p in prices:
-            p_desc = p.find("Model").text if p.find("Model") is not None else ""
-            govde = p.find("Govde").text if p.find("Govde") is not None else ""
-
-            # Hem Liste Fiyatını (MSRP) hem Kampanyalı Fiyatı oku
-            list_p_int = None
-            for l_key in ["ListeFiyati2", "ListeFiyati1"]:
-                l_node = p.find(l_key)
-                if l_node is not None and l_node.text:
-                    parsed_l = parse_price_str(l_node.text)
-                    if parsed_l and parsed_l >= 100_000:
-                        list_p_int = parsed_l
-                        break
-
-            camp_p_int = None
-            for c_key in ["KampanyaliFiyati2", "OTVTesvikli1", "KampanyaliFiyati1"]:
-                c_node = p.find(c_key)
-                if c_node is not None and c_node.text:
-                    parsed_c = parse_price_str(c_node.text)
-                    if parsed_c and parsed_c >= 100_000:
-                        camp_p_int = parsed_c
-                        break
-
-            # Kampanyalı fiyat yoksa liste fiyatını al, liste fiyatı yoksa kampanyalıyı al
-            final_campaign_price = camp_p_int if camp_p_int else list_p_int
-            final_list_price = list_p_int if list_p_int else final_campaign_price
-
-            if not final_campaign_price:
-                continue
-
-            discount_amount = (final_list_price - final_campaign_price) if final_list_price > final_campaign_price else 0
-
-            # "ÖTV'li versiyonlarda" gibi ek vergi/aksesuar satırlarını atla
-            if "ÖTV" in p_desc or "versiyon" in p_desc.lower() or "fark" in p_desc.lower():
-                if final_campaign_price < 100_000:
-                    continue
-
-            # Variant ismini oluştur
-            variant = f"{govde} {p_desc}".strip()
-            # UTF-8 decode bozukluklarını düzelt (örnek: YENÄ° -> YENİ)
-            variant = variant.replace("YENÄ°", "YENİ").replace("Ã–", "Ö").replace("Ã§", "ç").replace("ÅŸ", "ş")
-            model_name_clean = model_name.replace("YENÄ°", "YENİ").replace("Ã–", "Ö").replace("Ã§", "ç")
-
-            key = (model_name_clean, variant)
-            if key not in seen:
-                seen.add(key)
-                records.append({
-                    "model_name": model_name_clean,
-                    "variant": variant,
-                    "price_raw": fmt_price(final_campaign_price),
-                    "price_int": final_campaign_price,
-                    "list_price_int": final_list_price,
-                    "campaign_price_int": final_campaign_price,
-                    "discount_amount_int": discount_amount,
-                    "currency": "TRY"
-                })
-
-    return records
+from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
+from .base_scraper import BaseScraper, fmt_price
 
 
 class ToyotaScraper(BaseScraper):
@@ -111,17 +19,91 @@ class ToyotaScraper(BaseScraper):
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("xml_feed", self._fetch_xml_feed),
+            ("toyota_playwright_live", self._fetch_toyota_playwright_live),
         ]
 
-    def _fetch_xml_feed(self) -> list[dict]:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/125.0.0.0 Safari/537.36"
-            ),
-            "Referer": "https://turkiye.toyota.com.tr/middle/fiyat-listesi/"
-        }
-        r = http_get(XML_URL, headers=headers)
-        return _parse_toyota_xml(r.text)
+    def _fetch_toyota_playwright_live(self) -> list[dict]:
+        records: list[dict] = []
+        seen: set[tuple] = set()
+
+        url = "https://turkiye.toyota.com.tr/middle/fiyatl_aksesuar.html"
+
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                )
+                page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                page.wait_for_timeout(3000)
+                html = page.content()
+                browser.close()
+
+                soup = BeautifulSoup(html, "html.parser")
+                current_model = "Toyota"
+
+                for table in soup.find_all("table"):
+                    table_text = table.get_text()
+                    m_search = re.search(r"(Corolla|C-HR|Yaris|RAV4|Hilux|Proace|Camry|Land Cruiser)", table_text, re.IGNORECASE)
+                    if m_search:
+                        current_model = m_search.group(1)
+
+                    for tr in table.find_all("tr"):
+                        cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
+                        if len(cols) >= 2:
+                            variant_raw = cols[0]
+                            if "MODEL" in variant_raw.upper() or "DONANIM" in variant_raw.upper():
+                                continue
+
+                            prices_found = []
+                            for col_val in cols[1:]:
+                                pm = re.search(r"(\d[\d.,\s]+)", col_val)
+                                if pm:
+                                    p_val = int(re.sub(r"[^\d]", "", pm.group(1)))
+                                    if 100_000 < p_val < 10_000_000:
+                                        prices_found.append(p_val)
+
+                            if len(prices_found) >= 2:
+                                list_price = prices_found[0]
+                                camp_price = prices_found[1]
+                            elif len(prices_found) == 1:
+                                list_price = prices_found[0]
+                                camp_price = prices_found[0]
+                            else:
+                                continue
+
+                            year_m = re.search(r"\b(202[4-7])\b", f"{variant_raw} {table_text}")
+                            year_val = year_m.group(1) if year_m else "2026"
+
+                            model_name = current_model
+                            if "COROLLA CROSS" in variant_raw.upper(): model_name = "Corolla Cross"
+                            elif "COROLLA HB" in variant_raw.upper(): model_name = "Corolla Hatchback"
+                            elif "COROLLA" in variant_raw.upper(): model_name = "Corolla"
+                            elif "C-HR" in variant_raw.upper(): model_name = "C-HR"
+                            elif "YARIS CROSS" in variant_raw.upper(): model_name = "Yaris Cross"
+                            elif "YARIS" in variant_raw.upper(): model_name = "Yaris"
+                            elif "RAV4" in variant_raw.upper(): model_name = "RAV4"
+                            elif "HILUX" in variant_raw.upper(): model_name = "Hilux"
+
+                            key = (model_name, variant_raw, year_val, camp_price)
+                            if key not in seen:
+                                seen.add(key)
+                                disc = max(0, list_price - camp_price)
+                                disc_pct = round((disc / list_price) * 100, 1) if list_price > 0 else 0.0
+
+                                records.append({
+                                    "model_name": model_name,
+                                    "variant": variant_raw,
+                                    "price_raw": fmt_price(camp_price),
+                                    "price_int": camp_price,
+                                    "list_price_int": list_price,
+                                    "campaign_price_int": camp_price,
+                                    "discount_amount_int": disc,
+                                    "discount_pct": disc_pct,
+                                    "model_year": year_val,
+                                    "currency": "TRY"
+                                })
+        except Exception as e:
+            print(f"Playwright Toyota Live Scrape Error: {e}")
+
+        return records
