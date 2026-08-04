@@ -1,7 +1,7 @@
 """
-citroen_scraper.py  —  Citroën Türkiye (Tofaş Grubu) Fiyat Scraper'ı
-=====================================================================
-Birincil : Citroën Türkiye Resmi Fiyat Kataloğu & Model Listeleri
+citroen_scraper.py  —  Citroën Türkiye Fiyat Scraper'ı (Playwright Canlı Otomasyonu)
+===================================================================================
+Birincil : Playwright ile https://talep.citroen.com.tr/fiyat-listesi/ Canlı Sayfa Taraması
 """
 
 from __future__ import annotations
@@ -9,9 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any
 from bs4 import BeautifulSoup
-from .base_scraper import BaseScraper, fmt_price, http_get
-
-_CLEAN = re.compile(r"\s+")
+from playwright.sync_api import sync_playwright
+from .base_scraper import BaseScraper, fmt_price
 
 
 class CitroenScraper(BaseScraper):
@@ -20,76 +19,110 @@ class CitroenScraper(BaseScraper):
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("citroen_official_catalog", self._fetch_citroen_catalog),
+            ("citroen_playwright_live", self._fetch_citroen_playwright_live),
         ]
 
-    def _fetch_citroen_catalog(self) -> list[dict]:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-        }
+    def _fetch_citroen_playwright_live(self) -> list[dict]:
         records: list[dict] = []
         seen: set[tuple] = set()
 
-        official_citroen_catalog = [
-            ("Ami", "Ami 6 kW Elektrik 2-Kişilik", 449000),
-            ("C3", "C3 Feel 1.2 PureTech 83 hp 5-İleri Manuel", 995000),
-            ("C3", "C3 Shine 1.2 PureTech 110 hp EAT6", 1195000),
-            ("C3 Aircross", "C3 Aircross Feel Bold 1.2 PureTech 130 hp EAT6", 1385000),
-            ("C3 Aircross", "C3 Aircross Shine 1.2 PureTech 130 hp EAT6", 1525000),
-            ("C4", "C4 Feel Bold 1.2 PureTech 130 hp EAT8", 1495000),
-            ("C4", "C4 Shine Bold 1.2 PureTech 130 hp EAT8", 1685000),
-            ("e-C4", "e-C4 Shine Bold 100 kW Elektrik", 1595000),
-            ("C4 X", "C4 X Feel Bold 1.2 PureTech 130 hp EAT8", 1545000),
-            ("C4 X", "C4 X Shine Bold 1.2 PureTech 130 hp EAT8", 1725000),
-            ("e-C4 X", "e-C4 X Shine Bold 100 kW Elektrik", 1645000),
-            ("C5 Aircross", "C5 Aircross Feel Bold 1.5 BlueHDi 130 hp EAT8", 1985000),
-            ("C5 Aircross", "C5 Aircross Shine Bold 1.5 BlueHDi 130 hp EAT8", 2245000),
-            ("Berlingo", "Berlingo Feel Bold 1.5 BlueHDi 130 hp EAT8", 1295000),
-            ("Berlingo", "Berlingo Shine Bold 1.5 BlueHDi 130 hp EAT8", 1425000),
-            ("Berlingo Van", "Berlingo Van Feel 1.5 BlueHDi 100 hp Manuel", 965000),
-            ("Jumpy Van", "Jumpy Van L3 2.0 BlueHDi 145 hp Manuel", 1225000),
-            ("Jumper", "Jumper Van L3H2 2.2 BlueHDi 140 hp Manuel", 1445000),
+        url = "https://talep.citroen.com.tr/fiyat-listesi/"
+        model_keywords = [
+            "Ami", "C3 Aircross", "C3", "C4 X", "C4", "C5 Aircross", "Berlingo", "Jumpy", "Spacetourer"
         ]
 
         try:
-            r = http_get("https://www.citroen.com.tr/fiyat-listeleri.html", headers=headers)
-            soup = BeautifulSoup(r.text, "html.parser")
-            for t in soup.find_all("table"):
-                for tr in t.find_all("tr"):
-                    cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
-                    if len(cols) >= 2:
-                        m_name = cols[0]
-                        v_name = cols[1] if len(cols) > 2 else cols[0]
-                        price_text = cols[-1]
-                        m = re.search(r"(\d[\d.,\s]+)", price_text)
-                        if m:
-                            p_int = int(re.sub(r"[^\d]", "", m.group(1)))
-                            if 100_000 < p_int < 10_000_000:
-                                key = (m_name, v_name, p_int)
-                                if key not in seen:
-                                    seen.add(key)
-                                    records.append({
-                                        "model_name": m_name,
-                                        "variant": v_name,
-                                        "price_raw": fmt_price(p_int),
-                                        "price_int": p_int,
-                                        "currency": "TRY"
-                                    })
-        except Exception:
-            pass
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                )
+                page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                page.wait_for_timeout(3000)
 
-        if not records:
-            for item in official_citroen_catalog:
-                m_name, v_name, p_int = item[0], item[1], item[2]
-                key = (m_name, v_name, p_int)
-                if key not in seen:
-                    seen.add(key)
-                    records.append({
-                        "model_name": m_name,
-                        "variant": v_name,
-                        "price_raw": fmt_price(p_int),
-                        "price_int": p_int,
-                        "currency": "TRY"
-                    })
+                # Loop through model cards & accordions
+                model_texts = ["Ami", "C3 Aircross", "C3", "C4", "C4 X", "C5 Aircross", "Berlingo", "Jumpy"]
+                for m_text in model_texts:
+                    try:
+                        locators = page.get_by_text(m_text, exact=False).all()
+                        for loc in locators[:2]:
+                            if loc.is_visible():
+                                loc.click(timeout=500)
+                                page.wait_for_timeout(400)
+                    except Exception:
+                        pass
+
+                page.wait_for_timeout(2000)
+                html = page.content()
+                browser.close()
+
+                soup = BeautifulSoup(html, "html.parser")
+                current_model = "Citroën"
+
+                for table in soup.find_all("table"):
+                    table_text = table.get_text()
+                    if "Opsiyonlar" in table_text:
+                        continue
+
+                    m_search = re.search(r"(C3 Aircross|C3|C4 X|C4|C5 Aircross|Berlingo|Jumpy|Ami)", table_text, re.IGNORECASE)
+                    if m_search:
+                        current_model = m_search.group(1)
+
+                    for tr in table.find_all("tr"):
+                        cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
+                        if len(cols) >= 2:
+                            variant_raw = cols[0]
+                            if "VERSIYON" in variant_raw.upper() or "DONANIM" in variant_raw.upper() or "MODEL YILI" in variant_raw.upper():
+                                continue
+
+                            prices_found = []
+                            for col_val in cols[1:]:
+                                pm = re.search(r"(\d[\d.,\s]+)", col_val)
+                                if pm:
+                                    p_val = int(re.sub(r"[^\d]", "", pm.group(1)))
+                                    if 100_000 < p_val < 10_000_000:
+                                        prices_found.append(p_val)
+
+                            if len(prices_found) >= 2:
+                                list_price = prices_found[0]
+                                camp_price = prices_found[1]
+                            elif len(prices_found) == 1:
+                                list_price = prices_found[0]
+                                camp_price = prices_found[0]
+                            else:
+                                continue
+
+                            year_m = re.search(r"\b(202[4-7])\b", f"{variant_raw} {table_text}")
+                            year_val = year_m.group(1) if year_m else "2026"
+
+                            model_name = current_model
+                            if "C3 AIRCROSS" in variant_raw.upper(): model_name = "C3 Aircross"
+                            elif "C3" in variant_raw.upper(): model_name = "C3"
+                            elif "C4 X" in variant_raw.upper(): model_name = "C4 X"
+                            elif "C4" in variant_raw.upper(): model_name = "C4"
+                            elif "C5 AIRCROSS" in variant_raw.upper(): model_name = "C5 Aircross"
+                            elif "BERLINGO" in variant_raw.upper(): model_name = "Berlingo"
+                            elif "JUMPY" in variant_raw.upper(): model_name = "Jumpy"
+
+                            key = (model_name, variant_raw, year_val, camp_price)
+                            if key not in seen:
+                                seen.add(key)
+                                disc = max(0, list_price - camp_price)
+                                disc_pct = round((disc / list_price) * 100, 1) if list_price > 0 else 0.0
+
+                                records.append({
+                                    "model_name": model_name,
+                                    "variant": variant_raw,
+                                    "price_raw": fmt_price(camp_price),
+                                    "price_int": camp_price,
+                                    "list_price_int": list_price,
+                                    "campaign_price_int": camp_price,
+                                    "discount_amount_int": disc,
+                                    "discount_pct": disc_pct,
+                                    "model_year": year_val,
+                                    "currency": "TRY"
+                                })
+        except Exception as e:
+            print(f"Playwright Citroen Live Scrape Error: {e}")
 
         return records

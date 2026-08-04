@@ -1,7 +1,7 @@
 """
-fiat_scraper.py  —  Tofaş Grubu / Fiat Türkiye Fiyat Scraper'ı (2026 Kataloğu & Traction+ Serisi)
-=================================================================================================
-Birincil : Fiat Türkiye Resmi 2026 Fiyat Kataloğu & Model Listeleri
+fiat_scraper.py  —  Fiat Türkiye Fiyat Scraper'ı (Playwright Canlı Chrome Otomasyonu)
+======================================================================================
+Birincil : Playwright ile https://www.fiat.com.tr/fiyat-listesi Canlı Sayfa Taraması
 """
 
 from __future__ import annotations
@@ -9,9 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any
 from bs4 import BeautifulSoup
-from .base_scraper import BaseScraper, fmt_price, http_get
-
-_CLEAN = re.compile(r"\s+")
+from playwright.sync_api import sync_playwright
+from .base_scraper import BaseScraper, fmt_price
 
 
 class FiatScraper(BaseScraper):
@@ -20,118 +19,89 @@ class FiatScraper(BaseScraper):
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("fiat_official_catalog", self._fetch_fiat_catalog),
+            ("fiat_playwright_live", self._fetch_fiat_playwright_live),
         ]
 
-    def _fetch_fiat_catalog(self) -> list[dict]:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-        }
+    def _fetch_fiat_playwright_live(self) -> list[dict]:
         records: list[dict] = []
         seen: set[tuple] = set()
 
-        # Resmi Fiat 2026 Model Kataloğu (MSRP Liste Fiyatı ve Kampanyalı Satış Fiyatı)
-        official_fiat_catalog = [
-            # Egea Cross 2026 Model
-            ("Egea Cross", "Street 1.4 Fire 95 HP GSR Manuel", 1189900, 1105900),
-            ("Egea Cross", "Urban 1.4 Fire 95 HP GSR Manuel", 1249900, 1165900),
-            ("Egea Cross", "Lounge 1.4 Fire 95 HP GSR Manuel", 1319900, 1235900),
-            ("Egea Cross", "Street 1.6 Otomatik MultiJet 130 HP DCT GSR Traction+ Dizel", 1950500, 1850500),
-            ("Egea Cross", "Urban 1.6 Otomatik MultiJet 130 HP DCT GSR Traction+ Dizel", 1980500, 1880500),
-            ("Egea Cross", "Lounge 1.6 Otomatik MultiJet 130 HP DCT GSR Traction+ Dizel", 2050500, 1950500),
-            ("Egea Cross", "Limited 1.6 Otomatik MultiJet 130 HP DCT GSR Traction+ Dizel", 2090500, 1990500),
-            ("Egea Cross", "Lounge 1.5 Hybrid 130 HP eDCT Otomatik", 1695900, 1575900),
-            ("Egea Cross", "Limited 1.5 Hybrid 130 HP eDCT Otomatik", 1785900, 1665900),
-
-            # Egea Sedan 2026 Model
-            ("Egea Sedan", "Easy 1.4 Fire 95 HP GSR Manuel", 1089900, 1005900),
-            ("Egea Sedan", "Easy 1.6 MultiJet 130 HP GSR Dizel Manuel", 1499900, 1384900),
-            ("Egea Sedan", "Easy 1.6 MultiJet 130 HP DCT GSR Dizel Otomatik", 1889900, 1789900),
-            ("Egea Sedan", "Urban 1.4 Fire 95 HP GSR Manuel", 1159900, 1075900),
-            ("Egea Sedan", "Urban 1.6 MultiJet 130 HP GSR Dizel Manuel", 1599900, 1489900),
-            ("Egea Sedan", "Urban 1.6 MultiJet 130 HP DCT GSR Dizel Otomatik", 1959900, 1859900),
-            ("Egea Sedan", "Lounge 1.4 Fire 95 HP GSR Manuel", 1229900, 1145900),
-            ("Egea Sedan", "Lounge 1.6 MultiJet 130 HP GSR Dizel Manuel", 1674900, 1559900),
-            ("Egea Sedan", "Lounge 1.5 Hybrid 130 HP eDCT Otomatik", 1645900, 1525900),
-
-            # Topolino 2026 Model
-            ("Topolino", "Topolino 6.0 kW Elektrik", 499900, 469900),
-            ("Topolino", "Topolino Dolcevita 6.0 kW Elektrik", 529900, 499900),
-
-            # Fiat 600 2026 Model
-            ("Fiat 600", "600 RED 115 kW Elektrik", 1499900, 1399900),
-            ("Fiat 600", "600 La Prima 115 kW Elektrik", 1649900, 1549900),
-
-            # Ticari & Combi 2026 Model
-            ("Doblo Combi", "Yeni Doblo Combi Easy 1.5 BlueHDi 100 HP Manuel", 1215900, 1125900),
-            ("Doblo Combi", "Yeni Doblo Combi Urban 1.5 BlueHDi 130 HP AT Otomatik", 1385900, 1295900),
-            ("Doblo Cargo", "Yeni Doblo Cargo Maxi 1.5 BlueHDi 100 HP", 1075900, 995900),
-            ("Fiorino Combi", "Fiorino Combi Pop 1.4 Fire 77 HP Manuel", 845900, 785900),
-            ("Fiorino Combi", "Fiorino Combi Premio 1.3 M.Jet 95 HP Manuel", 1015900, 945900),
-            ("Ducato", "Ducato Van 13 m³ 2.2 Multijet3 140 HP Manuel", 1585900, 1485900),
-            ("Scudo", "Scudo Van 1.5 BlueHDi 120 HP Manuel", 1305900, 1215900),
-        ]
+        url = "https://www.fiat.com.tr/fiyat-listesi"
 
         try:
-            r = http_get("https://www.fiat.com.tr/fiyat-listesi", headers=headers, timeout=10)
-            soup = BeautifulSoup(r.text, "html.parser")
-            for t in soup.find_all("table"):
-                for tr in t.find_all("tr"):
-                    cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
-                    if len(cols) >= 3:
-                        m_name = cols[0]
-                        v_name = cols[1]
-                        list_text = cols[-2]
-                        camp_text = cols[-1]
-                        
-                        m_list = re.search(r"(\d[\d.,\s]+)", list_text)
-                        m_camp = re.search(r"(\d[\d.,\s]+)", camp_text)
-                        
-                        if m_camp:
-                            camp_p = int(re.sub(r"[^\d]", "", m_camp.group(1)))
-                            list_p = int(re.sub(r"[^\d]", "", m_list.group(1))) if m_list else camp_p
-                            if list_p < camp_p: list_p = camp_p
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                )
+                page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                page.wait_for_timeout(3000)
+                html = page.content()
+                browser.close()
 
-                            if 100_000 < camp_p < 10_000_000:
-                                key = (m_name, v_name, camp_p)
-                                if key not in seen:
-                                    seen.add(key)
-                                    disc = max(0, list_p - camp_p)
-                                    disc_pct = round((disc / list_p) * 100, 1) if list_p > 0 else 0.0
-                                    records.append({
-                                        "model_name": m_name,
-                                        "variant": v_name,
-                                        "price_raw": fmt_price(camp_p),
-                                        "price_int": camp_p,
-                                        "list_price_int": list_p,
-                                        "campaign_price_int": camp_p,
-                                        "discount_amount_int": disc,
-                                        "discount_pct": disc_pct,
-                                        "model_year": "2026",
-                                        "currency": "TRY"
-                                    })
-        except Exception:
-            pass
+                soup = BeautifulSoup(html, "html.parser")
+                current_model = "Fiat"
 
-        if not records:
-            for item in official_fiat_catalog:
-                m_name, v_name, list_p, camp_p = item[0], item[1], item[2], item[3]
-                key = (m_name, v_name, camp_p)
-                if key not in seen:
-                    seen.add(key)
-                    disc = max(0, list_p - camp_p)
-                    disc_pct = round((disc / list_p) * 100, 1) if list_p > 0 else 0.0
-                    records.append({
-                        "model_name": m_name,
-                        "variant": v_name,
-                        "price_raw": fmt_price(camp_p),
-                        "price_int": camp_p,
-                        "list_price_int": list_p,
-                        "campaign_price_int": camp_p,
-                        "discount_amount_int": disc,
-                        "discount_pct": disc_pct,
-                        "model_year": "2026",
-                        "currency": "TRY"
-                    })
+                for table in soup.find_all("table"):
+                    table_text = table.get_text()
+                    m_search = re.search(r"(Egea Cross|Egea Sedan|Egea Hatchback|Topolino|Fiat 600|Doblo|Fiorino|Ducato|Scudo)", table_text, re.IGNORECASE)
+                    if m_search:
+                        current_model = m_search.group(1)
+
+                    for tr in table.find_all("tr"):
+                        cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
+                        if len(cols) >= 2:
+                            variant_raw = cols[0]
+                            if "MODEL" in variant_raw.upper() or "DONANIM" in variant_raw.upper():
+                                continue
+
+                            prices_found = []
+                            for col_val in cols[1:]:
+                                pm = re.search(r"(\d[\d.,\s]+)", col_val)
+                                if pm:
+                                    p_val = int(re.sub(r"[^\d]", "", pm.group(1)))
+                                    if 100_000 < p_val < 10_000_000:
+                                        prices_found.append(p_val)
+
+                            if len(prices_found) >= 2:
+                                list_price = prices_found[0]
+                                camp_price = prices_found[1]
+                            elif len(prices_found) == 1:
+                                list_price = prices_found[0]
+                                camp_price = prices_found[0]
+                            else:
+                                continue
+
+                            year_m = re.search(r"\b(202[4-7])\b", f"{variant_raw} {table_text}")
+                            year_val = year_m.group(1) if year_m else "2026"
+
+                            model_name = current_model
+                            if "CROSS" in variant_raw.upper(): model_name = "Egea Cross"
+                            elif "SEDAN" in variant_raw.upper(): model_name = "Egea Sedan"
+                            elif "TOPOLINO" in variant_raw.upper(): model_name = "Topolino"
+                            elif "600" in variant_raw.upper(): model_name = "Fiat 600"
+                            elif "DOBLO" in variant_raw.upper(): model_name = "Doblo Combi"
+                            elif "FIORINO" in variant_raw.upper(): model_name = "Fiorino Combi"
+
+                            key = (model_name, variant_raw, year_val, camp_price)
+                            if key not in seen:
+                                seen.add(key)
+                                disc = max(0, list_price - camp_price)
+                                disc_pct = round((disc / list_price) * 100, 1) if list_price > 0 else 0.0
+
+                                records.append({
+                                    "model_name": model_name,
+                                    "variant": variant_raw,
+                                    "price_raw": fmt_price(camp_price),
+                                    "price_int": camp_price,
+                                    "list_price_int": list_price,
+                                    "campaign_price_int": camp_price,
+                                    "discount_amount_int": disc,
+                                    "discount_pct": disc_pct,
+                                    "model_year": year_val,
+                                    "currency": "TRY"
+                                })
+        except Exception as e:
+            print(f"Playwright Fiat Live Scrape Error: {e}")
 
         return records
