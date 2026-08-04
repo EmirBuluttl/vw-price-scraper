@@ -126,6 +126,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             scraped_at         TEXT    NOT NULL,
             scraped_date       TEXT    NOT NULL,
             is_latest          INTEGER DEFAULT 1,
+            is_active          INTEGER DEFAULT 1,
             is_new_model       INTEGER DEFAULT 0,
             is_new_variant     INTEGER DEFAULT 0,
             previous_price_int INTEGER,
@@ -165,6 +166,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE prices ADD COLUMN campaign_price_int INTEGER;")
     if "discount_amount_int" not in existing_cols:
         conn.execute("ALTER TABLE prices ADD COLUMN discount_amount_int INTEGER DEFAULT 0;")
+    if "is_active" not in existing_cols:
+        conn.execute("ALTER TABLE prices ADD COLUMN is_active INTEGER DEFAULT 1;")
 
     conn.commit()
 
@@ -430,14 +433,6 @@ class BaseScraper(ABC):
             except Exception as exc:
                 log.warning("  [%s] %s başarısız: %s", self.brand, method_name, exc)
 
-        # Tüm metodlar başarısız → stale data
-        stale = get_stale_records(conn, self.brand)
-        if stale:
-            log.warning(
-                "  [%s] Tüm metodlar başarısız, %d kayıt stale olarak kullanılıyor.",
-                self.brand, len(stale),
-            )
-            return stale, "stale"
-
-        log.error("  [%s] Hiç veri bulunamadı ve stale kayıt da yok!", self.brand)
+        # Stale fallback bu branchte devre dışı — Sadece %100 canlı gerçek veri döndürülür
+        log.warning("  [%s] Canlı tarama başarısız oldu. Stale fallback kapalı, bayat veri döndürülmüyor.", self.brand)
         return [], "failed"
