@@ -1,7 +1,7 @@
 """
-peugeot_scraper.py  —  Peugeot Türkiye Fiyat Scraper'ı (Resmi 2026 MY Kataloğu & 408 145hp Güncel)
-===================================================================================================
-Birincil : Peugeot Türkiye Resmi 2026 Fiyat Kataloğu
+peugeot_scraper.py  —  Peugeot Türkiye Fiyat Scraper'ı (Playwright Canlı Chrome Otomasyonu)
+===========================================================================================
+Birincil : Playwright ile https://kampanya.peugeot.com.tr/fiyat-listesi/ Canlı Sayfa Taraması
 """
 
 from __future__ import annotations
@@ -9,7 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any
 from bs4 import BeautifulSoup
-from .base_scraper import BaseScraper, fmt_price, http_get
+from playwright.sync_api import sync_playwright
+from .base_scraper import BaseScraper, fmt_price
 
 
 class PeugeotScraper(BaseScraper):
@@ -18,121 +19,98 @@ class PeugeotScraper(BaseScraper):
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("peugeot_official_catalog", self._fetch_peugeot_catalog),
+            ("peugeot_playwright_live", self._fetch_peugeot_playwright_live),
         ]
 
-    def _fetch_peugeot_catalog(self) -> list[dict]:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-        }
+    def _fetch_peugeot_playwright_live(self) -> list[dict]:
         records: list[dict] = []
         seen: set[tuple] = set()
 
-        # Resmi Peugeot 2026 MY Güncel Kataloğu (MSRP Liste & Lansmana Özel Nakit Satış Fiyatları)
-        # Format: (model_name, variant_name, year, list_price_int, campaign_price_int)
-        official_peugeot_catalog = [
-            # Yeni PEUGEOT 408 2026 MY (1.2 Hybrid 145hp eDCS6)
-            ("408", "Yeni 408 ALLURE 1.2 Hybrid 145hp eDCS6", "2026", 2580000, 2330000),
-            ("408", "Yeni 408 ALLURE 1.2 Hybrid 145hp eDCS6 Cam Tavan", "2026", 2695000, 2695000),
-            ("408", "Yeni 408 GT 1.2 Hybrid 145hp eDCS6", "2026", 2910000, 2745000),
-
-            # 208
-            ("208", "208 Active Prime 1.2 PureTech 100 hp EAT8", "2026", 1360000, 1290000),
-            ("208", "208 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 1490000, 1420000),
-            ("208", "208 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 1640000, 1560000),
-
-            # E-208
-            ("E-208", "E-208 GT 156 hp (115 kW) Elektrik", "2026", 1550000, 1480000),
-
-            # 308
-            ("308", "308 Active Prime 1.2 Hybrid 136 hp e-DCS6", "2026", 1660000, 1580000),
-            ("308", "308 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 1770000, 1690000),
-            ("308", "308 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 1960000, 1880000),
-
-            # E-308
-            ("E-308", "E-308 GT 156 hp (115 kW) Elektrik", "2026", 1930000, 1850000),
-
-            # 2008
-            ("2008", "2008 Active Prime 1.2 PureTech 130 hp EAT8", "2026", 1690000, 1610000),
-            ("2008", "2008 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 1830000, 1750000),
-            ("2008", "2008 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2070000, 1980000),
-
-            # E-2008
-            ("E-2008", "E-2008 GT 156 hp (115 kW) Elektrik", "2026", 1970000, 1890000),
-
-            # 3008
-            ("3008", "Yeni 3008 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 2290000, 2190000),
-            ("3008", "Yeni 3008 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2590000, 2490000),
-
-            # E-3008
-            ("E-3008", "Yeni E-3008 GT 210 hp (157 kW) Elektrik", "2026", 2690000, 2590000),
-
-            # 5008
-            ("5008", "Yeni 5008 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 2660000, 2550000),
-            ("5008", "Yeni 5008 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2960000, 2850000),
-
-            # Ticari Araçlar (Expert 145 HP, Rifter, Partner, Boxer)
-            ("Rifter", "Rifter Allure 1.5 BlueHDi 130 hp EAT8", "2026", 1390000, 1320000),
-            ("Rifter", "Rifter GT 1.5 BlueHDi 130 hp EAT8", "2026", 1520000, 1450000),
-            ("Partner Van", "Partner Van Pro 1.5 BlueHDi 100 hp Manuel", "2026", 1040000, 995000),
-            ("Expert Van", "Expert Van L3 2.0 BlueHDi 145 hp Manuel", "2026", 1340000, 1280000),
-            ("Expert Combi", "Expert Combi 2.0 BlueHDi 145 hp EAT8 Otomatik", "2026", 1540000, 1470000),
-            ("Boxer Van", "Boxer Van L3H2 2.2 BlueHDi 140 hp Manuel", "2026", 1450000, 1380000),
-        ]
-
+        url = "https://kampanya.peugeot.com.tr/fiyat-listesi/"
         try:
-            r = http_get("https://www.peugeot.com.tr/fiyat-listesi.html", headers=headers, timeout=10)
-            soup = BeautifulSoup(r.text, "html.parser")
-            for t in soup.find_all("table"):
-                for tr in t.find_all("tr"):
-                    cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
-                    if len(cols) >= 2:
-                        m_name = cols[0]
-                        v_name = cols[1] if len(cols) > 2 else cols[0]
-                        price_text = cols[-1]
-                        m = re.search(r"(\d[\d.,\s]+)", price_text)
-                        if m:
-                            p_int = int(re.sub(r"[^\d]", "", m.group(1)))
-                            if 100_000 < p_int < 10_000_000:
-                                year_m = re.search(r"\b(202[4-7])\b", f"{m_name} {v_name}")
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                )
+                response = page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                page.wait_for_timeout(2000)
+                html = page.content()
+                browser.close()
+
+                soup = BeautifulSoup(html, "html.parser")
+                current_model = "Peugeot"
+
+                for table in soup.find_all("table"):
+                    table_text = table.get_text()
+                    
+                    # Model Adı Algılama
+                    m_search = re.search(r"(PEUGEOT\s+[\w\d]+|208|308|408|2008|3008|5008|Rifter|Partner|Expert|Boxer)", table_text, re.IGNORECASE)
+                    if m_search:
+                        current_model = m_search.group(1).upper().replace("PEUGEOT", "").strip()
+                        if not current_model: current_model = "Peugeot"
+
+                    for tr in table.find_all("tr"):
+                        cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
+                        if len(cols) >= 2:
+                            variant_raw = cols[0]
+                            if "MODELLER" in variant_raw.upper() or "HYBRID" in variant_raw.upper() and len(cols) == 1:
+                                continue
+                            
+                            # Fiyat sütunları
+                            list_price = 0
+                            camp_price = 0
+                            
+                            prices_found = []
+                            for col_val in cols[1:]:
+                                pm = re.search(r"(\d[\d.,\s]+)", col_val)
+                                if pm:
+                                    p_val = int(re.sub(r"[^\d]", "", pm.group(1)))
+                                    if 100_000 < p_val < 10_000_000:
+                                        prices_found.append(p_val)
+                            
+                            if len(prices_found) >= 2:
+                                list_price = prices_found[0]
+                                camp_price = prices_found[1]
+                            elif len(prices_found) == 1:
+                                list_price = prices_found[0]
+                                camp_price = prices_found[0]
+
+                            if camp_price > 0 and len(variant_raw) > 3:
+                                year_m = re.search(r"\b(202[4-7])\b", f"{variant_raw} {table_text}")
                                 year_val = year_m.group(1) if year_m else "2026"
-                                key = (m_name, v_name, year_val, p_int)
+
+                                model_name = current_model
+                                if "408" in variant_raw: model_name = "408"
+                                elif "308" in variant_raw: model_name = "308"
+                                elif "208" in variant_raw: model_name = "208"
+                                elif "2008" in variant_raw: model_name = "2008"
+                                elif "3008" in variant_raw: model_name = "3008"
+                                elif "5008" in variant_raw: model_name = "5008"
+                                elif "RIFTER" in variant_raw.upper(): model_name = "Rifter"
+                                elif "PARTNER" in variant_raw.upper(): model_name = "Partner Van"
+                                elif "EXPERT" in variant_raw.upper(): model_name = "Expert Van"
+                                elif "BOXER" in variant_raw.upper(): model_name = "Boxer Van"
+
+                                key = (model_name, variant_raw, year_val, camp_price)
                                 if key not in seen:
                                     seen.add(key)
+                                    disc = max(0, list_price - camp_price)
+                                    disc_pct = round((disc / list_price) * 100, 1) if list_price > 0 else 0.0
+
                                     records.append({
-                                        "model_name": m_name,
-                                        "variant": v_name,
-                                        "price_raw": fmt_price(p_int),
-                                        "price_int": p_int,
-                                        "list_price_int": p_int,
-                                        "campaign_price_int": p_int,
-                                        "discount_amount_int": 0,
-                                        "discount_pct": 0.0,
+                                        "model_name": model_name,
+                                        "variant": variant_raw,
+                                        "price_raw": fmt_price(camp_price),
+                                        "price_int": camp_price,
+                                        "list_price_int": list_price,
+                                        "campaign_price_int": camp_price,
+                                        "discount_amount_int": disc,
+                                        "discount_pct": disc_pct,
                                         "model_year": year_val,
                                         "currency": "TRY"
                                     })
-        except Exception:
-            pass
-
-        if not records:
-            for item in official_peugeot_catalog:
-                m_name, v_name, year, list_p, camp_p = item[0], item[1], item[2], item[3], item[4]
-                key = (m_name, v_name, year, camp_p)
-                if key not in seen:
-                    seen.add(key)
-                    disc = max(0, list_p - camp_p)
-                    disc_pct = round((disc / list_p) * 100, 1) if list_p > 0 else 0.0
-                    records.append({
-                        "model_name": m_name,
-                        "variant": v_name,
-                        "price_raw": fmt_price(camp_p),
-                        "price_int": camp_p,
-                        "list_price_int": list_p,
-                        "campaign_price_int": camp_p,
-                        "discount_amount_int": disc,
-                        "discount_pct": disc_pct,
-                        "model_year": year,
-                        "currency": "TRY"
-                    })
+        except Exception as e:
+            print(f"Playwright Peugeot Live Scrape Hata: {e}")
 
         return records
