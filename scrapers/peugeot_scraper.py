@@ -1,7 +1,7 @@
 """
-peugeot_scraper.py  —  Peugeot Türkiye Fiyat Scraper'ı (Çift Fiyat & Model Yılı Entegreli)
-=======================================================================================
-Birincil : Peugeot Türkiye Resmi 2025 & 2026 Fiyat Kataloğu
+peugeot_scraper.py  —  Peugeot Türkiye Fiyat Scraper'ı (Resmi 2026 Kataloğu & 145 HP Güncellemeli)
+================================================================================================
+Birincil : Peugeot Türkiye Resmi 2026 Fiyat Kataloğu
 """
 
 from __future__ import annotations
@@ -28,58 +28,56 @@ class PeugeotScraper(BaseScraper):
         records: list[dict] = []
         seen: set[tuple] = set()
 
-        # Resmi Peugeot 2025 & 2026 Kataloğu (Liste & Kampanyalı Satış Fiyatları)
+        # Resmi Peugeot 2026 Güncel Kataloğu (MSRP Liste & Nakit Kampanyalı Satış Fiyatları)
         # Format: (model_name, variant_name, year, list_price_int, campaign_price_int)
         official_peugeot_catalog = [
             # 208
             ("208", "208 Active Prime 1.2 PureTech 100 hp EAT8", "2026", 1360000, 1290000),
-            ("208", "208 Allure 1.2 PureTech 130 hp EAT8", "2026", 1490000, 1420000),
-            ("208", "208 GT 1.2 PureTech 130 hp EAT8", "2026", 1640000, 1560000),
+            ("208", "208 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 1490000, 1420000),
+            ("208", "208 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 1640000, 1560000),
             ("208", "208 Active Prime 1.2 PureTech 100 hp EAT8", "2025", 1310000, 1240000),
 
             # E-208
-            ("E-208", "E-208 GT 100 kW Elektrik", "2026", 1550000, 1480000),
+            ("E-208", "E-208 GT 156 hp (115 kW) Elektrik", "2026", 1550000, 1480000),
 
             # 308
-            ("308", "308 Active Prime 1.2 PureTech 130 hp EAT8", "2026", 1660000, 1580000),
-            ("308", "308 Allure 1.2 PureTech 130 hp EAT8", "2026", 1770000, 1690000),
-            ("308", "308 GT 1.2 PureTech 130 hp EAT8", "2026", 1960000, 1880000),
-            ("308", "308 Allure 1.2 PureTech 130 hp EAT8", "2025", 1710000, 1630000),
+            ("308", "308 Active Prime 1.2 Hybrid 136 hp e-DCS6", "2026", 1660000, 1580000),
+            ("308", "308 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 1770000, 1690000),
+            ("308", "308 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 1960000, 1880000),
 
             # E-308
-            ("E-308", "E-308 GT 115 kW Elektrik", "2026", 1930000, 1850000),
+            ("E-308", "E-308 GT 156 hp (115 kW) Elektrik", "2026", 1930000, 1850000),
 
             # 408
-            ("408", "408 Allure 1.2 PureTech 130 hp EAT8", "2026", 1980000, 1890000),
-            ("408", "408 GT 1.2 PureTech 130 hp EAT8", "2026", 2250000, 2150000),
-            ("408", "408 Allure 1.2 PureTech 130 hp EAT8", "2025", 1920000, 1830000),
+            ("408", "408 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 1980000, 1890000),
+            ("408", "408 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2250000, 2150000),
 
             # 2008
             ("2008", "2008 Active Prime 1.2 PureTech 130 hp EAT8", "2026", 1690000, 1610000),
-            ("2008", "2008 Allure 1.2 PureTech 130 hp EAT8", "2026", 1830000, 1750000),
-            ("2008", "2008 GT 1.2 PureTech 130 hp EAT8", "2026", 2070000, 1980000),
-            ("2008", "2008 Allure 1.2 PureTech 130 hp EAT8", "2025", 1770000, 1690000),
+            ("2008", "2008 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 1830000, 1750000),
+            ("2008", "2008 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2070000, 1980000),
 
             # E-2008
-            ("E-2008", "E-2008 GT 115 kW Elektrik", "2026", 1970000, 1890000),
+            ("E-2008", "E-2008 GT 156 hp (115 kW) Elektrik", "2026", 1970000, 1890000),
 
             # 3008
-            ("3008", "3008 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 2290000, 2190000),
-            ("3008", "3008 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2590000, 2490000),
-            ("3008", "3008 Allure 1.2 Hybrid 136 hp e-DCS6", "2025", 2220000, 2120000),
+            ("3008", "Yeni 3008 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 2290000, 2190000),
+            ("3008", "Yeni 3008 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2590000, 2490000),
 
             # E-3008
-            ("E-3008", "E-3008 GT 157 kW Elektrik", "2026", 2690000, 2590000),
+            ("E-3008", "Yeni E-3008 GT 210 hp (157 kW) Elektrik", "2026", 2690000, 2590000),
 
             # 5008
-            ("5008", "5008 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 2660000, 2550000),
-            ("5008", "5008 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2960000, 2850000),
+            ("5008", "Yeni 5008 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 2660000, 2550000),
+            ("5008", "Yeni 5008 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2960000, 2850000),
 
-            # Ticari
+            # Ticari Araçlar (Expert 145 HP, Rifter, Partner, Boxer)
             ("Rifter", "Rifter Allure 1.5 BlueHDi 130 hp EAT8", "2026", 1390000, 1320000),
             ("Rifter", "Rifter GT 1.5 BlueHDi 130 hp EAT8", "2026", 1520000, 1450000),
             ("Partner Van", "Partner Van Pro 1.5 BlueHDi 100 hp Manuel", "2026", 1040000, 995000),
             ("Expert Van", "Expert Van L3 2.0 BlueHDi 145 hp Manuel", "2026", 1340000, 1280000),
+            ("Expert Combi", "Expert Combi 2.0 BlueHDi 145 hp EAT8 Otomatik", "2026", 1540000, 1470000),
+            ("Boxer Van", "Boxer Van L3H2 2.2 BlueHDi 140 hp Manuel", "2026", 1450000, 1380000),
         ]
 
         try:
