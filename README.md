@@ -1,164 +1,237 @@
-# 🚗 Kurumsal Çoklu Marka Araç Fiyat Takip & Analiz Portalı (Multi-Brand Scraper)
+# VW Price Scraper Live Catalog Engine
 
-Bu proje; Türkiye otomotiv pazarında yer alan **17 aktif otomobil markasının** (**Volkswagen, Skoda, Renault, Ford, Hyundai, Toyota, Chery, Dacia, Kia, Fiat, Peugeot, Opel, Citroën, Jeep, Alfa Romeo, DS Automobiles, Maserati**) sıfır kilometre araç donanım ve fiyat listelerini otomatik olarak çeken, ilişkisel SQLite veritabanında saklayan, zaman çizelgeli fiyat değişim analizi sunan ve **Gelişmiş Web Paneli (Flask + Glassmorphism UI)** üzerinden yönetilen kurumsal bir fiyat takip platformudur.
+Türkiye distribütör sitelerindeki güncel sıfır araç katalog fiyatlarını canlı olarak tarayan, SQLite veritabanına kaydeden ve Flask tabanlı web panelinde gösteren çok markalı fiyat takip sistemidir.
 
----
+6 Ağustos 2026 itibarıyla aktif canlı kapsam:
 
-## ✨ Öne Çıkan Özellikler
+- Volkswagen
+- Skoda
+- Renault
+- Ford
+- Hyundai
+- Toyota
+- Chery
+- Dacia
+- Kia
+- Fiat
+- Peugeot
+- Opel
+- Citroën
+- Jeep
+- Alfa Romeo
+- DS Automobiles
 
-- **🎛️ 3-Grup Sekme Mimarisi (Gelişmiş Filtreleme)**:
-  - **`🌐 Tüm Markalar`**: 17 markanın tamamını listeler.
-  - **`🏢 Tofaş Grubu`**: Sadece Tofaş/Stellantis markalarını (*Fiat, Peugeot, Opel, Citroën, Jeep, Alfa Romeo, DS, Maserati*) listeler.
-  - **`🚗 Bağımsız Markalar`**: Sadece Tofaş dışı bağımsız markaları (*VW, Skoda, Renault, Ford, Hyundai, Toyota, Kia, Chery, Dacia*) listeler.
-  - **Model Menüsü İzolasyonu**: Marka butonuna doğrudan basılmadığı sürece model menüsü kesinlikle açılmaz, ekranı kalabalıklaştırmaz.
+Kapsam dışı:
 
-- **📊 Tarihsel Fiyat Analizi & İnteraktif Trend Grafiği (Chart.js)**:
-  - Seçilen iki tarih arasındaki net TL ve % değişim farkı, dönem içi min/max fiyatlar dinamik hesaplanır.
-  - **Chart.js Çizgi Grafiği** ile zam dönemleri (Yeşil) ve indirim dönemleri (Kırmızı) görselleştirilir.
+- Maserati
 
-- **📗 Biçimlendirilmiş Renkli Excel (.xlsx) İhracatı**:
-  - OpenPyXL entegrasyonu ile indirilen Excel dosyalarında fiyatı artan araçlar **YEŞİL**, düşenler **KIRMIZI** dolgu ile vurgulanır.
-  - Değişim yüzdeleri (`+%5.00` gibi) ve `Fark Tipi` sütunları tam doğrulukla hesaplanır.
+## Temel prensipler
 
-- **🛡️ Kurumsal Uyumlu Anti-Bot ve Fallback (Stale Data) Güvenliği**:
-  - Cloudflare/Akamai bot engellerine karşı tarayıcı başlıkları (`User-Agent`, `Sec-Fetch-*`) ve 3 kademeli retry mekanizması mevcuttur.
-  - Bir markanın sitesi bakıma girdiğinde sistem çökmez; veritabanındaki son doğrulanmış veriyi (**stale data**) kullanarak kesintisiz hizmet verir.
+- Yalnızca canlı ve resmi kaynaklardan veri alınır.
+- Canlı veri doğrulanamazsa kayıt kabul edilmez.
+- Bayat veri canlıymış gibi sunulmaz.
+- Her marka için güvenilir veri yolu doğrulanır, ilk doğrulanmış sonuç kabul edilir.
 
----
+## Mimari özet
 
-## 🏗️ Proje Yapısı
+- Backend: Python 3.13 + Flask
+- Veritabanı: SQLite
+- Tarama: Playwright + resmi HTML / JSON / API kaynakları
+- Frontend: Vanilla JS + HTML + CSS
 
-```text
-vw-price-scraper/
-│
-├── scrapers/                   # 17 Marka İçin Özel Scraper Modülleri
-│   ├── base_scraper.py         # Ortak arayüz, HTTP retry & SQLite kayıt mantığı
-│   ├── vw_scraper.py           # Doğuş Oto API Gateway
-│   ├── skoda_scraper.py        # Skoda Next.js JSON Parser
-│   ├── renault_scraper.py      # Renault Tekil Model Landing Page Parser
-│   ├── ford_scraper.py         # Ford Web API JSON Client
-│   ├── hyundai_scraper.py      # Hyundai Resmi GraphQL API Client
-│   ├── toyota_scraper.py       # Toyota XML Price Feed Parser
-│   ├── chery_scraper.py        # Chery Divi Table Parser
-│   ├── dacia_scraper.py        # Dacia HTML Parser
-│   ├── kia_scraper.py          # Kia Katalog Parser
-│   ├── fiat_scraper.py         # Fiat Katalog Parser
-│   ├── peugeot_scraper.py      # Peugeot Katalog Parser
-│   ├── opel_scraper.py         # Opel Katalog Parser
-│   ├── citroen_scraper.py      # Citroën Katalog Parser
-│   ├── jeep_scraper.py         # Jeep Katalog Parser
-│   ├── alfaromeo_scraper.py   # Alfa Romeo Katalog Parser
-│   ├── ds_scraper.py           # DS Automobiles Katalog Parser
-│   └── maserati_scraper.py     # Maserati Katalog Parser
-│
-├── app.py                      # Flask REST API & Web Sunucusu
-├── multi_scraper.py            # Tüm scraper'ları çalıştıran orkestrasyon betiği
-├── car_prices.db               # İlişkisel SQLite Veritabanı
-├── templates/                  # Jinja2 HTML Arayüz Şablonları (index.html, login.html)
-├── static/                     # CSS Stilleri ve JavaScript (app.js, style.css)
-└── requirements.txt            # Python Bağımlılık Listesi
+Sistemde toplu tarama sırasında ortak Playwright runtime kullanılır. Bu sayede her marka için ayrı ayrı Chromium açılıp kapanmadığı için timeout ve kaynak birikmesi azaltılır.
+
+## Resmi veri kaynakları
+
+- Volkswagen: Doğuş Oto API
+- Skoda: Next.js `__NEXT_DATA__`
+- Renault: `best.renault.com.tr` canlı fiyat tabloları
+- Ford: resmi fiyat API
+- Hyundai: resmi GraphQL
+- Toyota: resmi fiyat listesi sayfası
+- Chery: resmi fiyat sayfasındaki render edilmiş DOM tabloları
+- Dacia: resmi site state verisi
+- Kia: resmi fiyat listesi sayfası
+- Fiat / Peugeot / Opel / Citroën / Jeep / Alfa Romeo / DS: resmi katalog / iframe / canlı sayfa kaynakları
+
+## Kurulum
+
+### 1) Repoyu çek
+
+```powershell
+git clone https://github.com/EmirBuluttl/price-scraper.git
+cd price-scraper
 ```
 
----
+### 2) Python sanal ortamı oluştur
 
-## 💻 Kurumsal Bilgisayarda Sıfırdan Kurulum Rehberi
-
-Kurumsal bilgisayarınızda projeyi sıfırdan çalıştırmak için aşağıdaki adımları sırasıyla uygulayın:
-
-### 1. Adım: Projeyi Bilgisayarınıza Çekin
-
-Komut İstemcisi (CMD) veya PowerShell açıp projeyi indirin:
-```cmd
-git clone https://github.com/EmirBuluttl/vw-price-scraper.git
-cd vw-price-scraper
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
-*(Eğer proje zaten bilgisayarınızdaysa en son güncellemeleri çekin: `git pull origin main`)*
 
----
+### 3) Bağımlılıkları kur
 
-### 2. Adım: Kütüphaneleri Doğru Şekilde Yükleyin
-
-⚠️ **ÖNEMLİ (Kurumsal Ortam Uyarısı)**: Bağımlılıkları doğrudan aktif Python yürütücüsüne yüklemek için `pip` yerine **`python -m pip`** komutunu kullanın:
-
-```cmd
+```powershell
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-#### 🛠️ Kurumsal Proxy / Şirket Güvenlik Duvarı Takılması Durumunda:
-Eğer şirketinizin güvenlik duvarı SSL sertifikası hatası verirse şu komutu kullanabilirsiniz:
-```cmd
-python -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
+### 4) Playwright Chromium kur
+
+```powershell
+python -m playwright install chromium
 ```
 
----
+Not: Bazı kurum ağlarında ilk kurulum sırasında güvenlik duvarı / proxy nedeniyle ek izin gerekebilir.
 
-### 3. Adım: Kurulumu Doğrulayın
+## Çalıştırma
 
-Kütüphanelerin tam yüklendiğini teyit etmek için şu hızlı testi çalıştırın:
-```cmd
-python -c "import openpyxl; import flask; import requests; print('✅ TÜM KURULUM BAŞARILI!')"
-```
-Ekranda **`✅ TÜM KURULUM BAŞARILI!`** çıktısını görüyorsanız sistem hazırdır.
+Varsayılan:
 
----
-
-### 4. Adım: Web Sunucusunu Başlatın
-
-```cmd
+```powershell
 python app.py
 ```
 
-Terminalde şu çıktıyı göreceksiniz:
-```text
-======================================================================
-  KURUMSAL COKLU MARKA ARAC FIYAT SCRAPER WEB PANELI
-  Tarayicida acin: http://localhost:5000
-======================================================================
- * Running on http://0.0.0.0:5000
+Özel port:
+
+```powershell
+$env:PORT="5001"
+python app.py
 ```
 
----
+Ardından tarayıcıdan:
 
-### 5. Adım: Web Paneline Erişin
+- `http://localhost:5000`
+- veya port değiştirdiysen ilgili port
 
-1. Terminal ekranını kapatmayın (arka planda sunucu olarak çalışır).
-2. Tarayıcınızı açıp adres çubuğuna yazın:
-   ```text
-   http://localhost:5000
-   ```
-3. **İlk Giriş / Yönetici Kurulumu**:
-   - Eğer veritabanı sıfırsa sistem sizi **`/setup-admin`** ekranına yönlendirir. Kendinize bir Admin şifresi belirleyin.
-   - Şifre belirledikten sonra `admin` kullanıcı adı ve şifrenizle sisteme giriş yapabilirsiniz.
+## Erişim modeli
 
----
+- Uygulama arayüzü herkese açıktır.
+- Admin kurulumu zorunlu değildir.
+- Tekli canlı tarama ve toplu canlı tarama için ayrıca admin girişi gerekmez.
 
-### 🌐 Ofis / Şirket Ağındaki Diğer Bilgisayarlardan Erişmek İçin
+## Başka bilgisayarda kurulum
 
-Web sunucusu `0.0.0.0` portunda çalıştığı için aynı şirket Wi-Fi/LAN ağı üzerindeki diğer bilgisayarlardan veya tabletlerden de erişilebilir:
+Yeni bir bilgisayarda minimum akış:
 
-1. Sunucu bilgisayarda CMD'ye `ipconfig` yazıp IPv4 adresinizi öğrenin (Örn: `192.168.1.50`).
-2. Ağdaki diğer bilgisayarların tarayıcısından şu adrese girin:
-   ```text
-   http://192.168.1.50:5000
-   ```
+```powershell
+git clone https://github.com/EmirBuluttl/price-scraper.git
+cd price-scraper
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m playwright install chromium
+python app.py
+```
 
----
+Eğer aynı ağdaki başka cihazlardan erişilecekse sunucuyu çalıştıran makinenin IPv4 adresi ile erişebilirsin:
 
-## 🛠️ Sıkça Karşılaşılan Sorunlar & Çözümleri
+- `http://192.168.x.x:5000`
 
-### ❓ `ModuleNotFoundError: No module named 'openpyxl'` veya `'flask'`
-- **Neden**: `pip` komutu sistemdeki farklı bir Python sürümüne kütüphane yüklemiş olabilir.
-- **Çözüm**: Doğrudan aktif Python'a yüklemek için şu komutu çalıştırın:
-  ```cmd
-  python -m pip install openpyxl flask requests beautifulsoup4 werkzeug lxml
-  ```
+## Manuel test önerisi
 
-### ❓ Port 5000 Kullanımda / `Address already in use` Hatası
-- **Neden**: Bilgisayarınızda Port 5000 başka bir servis (AirPlay veya çakışan sunucu) tarafından kullanılıyordur.
-- **Çözüm**: `app.py` dosyasının en altındaki `port=5000` değerini `port=5050` yapıp kaydedin ve tekrar `python app.py` çalıştırın.
+Uygulama açıldıktan sonra önce tekli marka testleri, sonra toplu test yapılmalı.
 
----
+### Tekli marka testleri
 
-## 📝 Lisans ve Kurumsal Kullanım
+Önerilen kontrol sırası:
 
-Bu proje kurumsal otomotiv piyasa analizi ve fiyat takibi amacıyla geliştirilmiştir. Toplanan tüm veriler distribütörlerin kamuya açık liste fiyatlarıdır.
+1. Peugeot
+2. Toyota
+3. Kia
+4. Renault
+5. Chery
+
+Kontrol örnekleri:
+
+- Peugeot 408:
+  - `Yeni 408 ALLURE 1.2 Hybrid 145hp eDCS6`
+  - `Yeni 408 GT 1.2 Hybrid 145hp eDCS6`
+
+- Toyota Corolla Hybrid:
+  - `1.8 Hybrid Dream e-CVT`
+  - `1.8 Hybrid Dream-X-Pack e-CVT`
+  - `1.8 Hybrid Flame X-Pack e-CVT`
+
+- Kia Sportage:
+  - `Live`
+  - `Vision`
+  - `Cool`
+  - `Elegance`
+  - `Prestige`
+  - `GT-Line`
+
+- Renault Yeni Clio:
+  - `evolution plus TCe EDC 115 hp`
+  - `esprit alpine TCe EDC 115 hp`
+
+- Chery:
+  - `Tiggo 7 Pro Max`
+  - `Tiggo 8 Pro Max`
+  - varyantlarda `145hp`
+
+### Toplu test
+
+- `Fiyatları Canlı Tara` tetiklenir
+- boş sonuç yağmuru olmamalı
+- doğrulanmayan veri kaydedilmemeli
+- Maserati aktif listede görünmemeli
+
+## Veritabanı notları
+
+- Ana veritabanı: `car_prices.db`
+- Uygulama test sırasında istenirse ayrı DB ile de çalıştırılabilir:
+  - `PRICE_SCRAPER_DB_PATH`
+  - `SCRAPER_DB_PATH`
+
+Örnek:
+
+```powershell
+$env:PRICE_SCRAPER_DB_PATH="C:\temp\car_prices_test.db"
+python app.py
+```
+
+## Önemli operasyon notları
+
+- `main` sunuma hazır dal olarak kullanılmalıdır.
+- yeni scraper geliştirmeleri önce izole test DB üzerinde doğrulanmalıdır.
+- canlı veri değişirse marka bazlı scraper tekrar gözden geçirilmelidir.
+
+## Sık görülen sorunlar
+
+### `ModuleNotFoundError`
+
+Sanal ortam aktif değilse:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+### `playwright` veya browser hatası
+
+Chromium eksik olabilir:
+
+```powershell
+python -m playwright install chromium
+```
+
+### `Address already in use`
+
+Port değiştir:
+
+```powershell
+$env:PORT="5001"
+python app.py
+```
+
+### Tarama yavaşsa
+
+- marka siteleri canlı yanıt veriyor mu kontrol et
+- kurum ağı Playwright trafiğini yavaşlatıyor olabilir
+- önce tekli marka scrape ile doğrula
+
+## Sunum için kısa özet
+
+Bu proje, Türkiye otomotiv distribütör sitelerindeki resmi fiyat kataloglarını canlı okuyup doğrulayan ve yalnızca doğrulanmış sonuçları gösteren bir fiyat takip motorudur. Temel farkı, eski veri fallback’ini kapatması ve her marka için doğrulama kontratı uygulamasıdır.

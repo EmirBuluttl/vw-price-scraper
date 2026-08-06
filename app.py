@@ -620,9 +620,6 @@ def _run_scrapers_thread(scrapers_to_run=None):
 @login_required
 def trigger_scrape():
     global SCRAPE_STATUS
-    if session.get("user") != "admin":
-        return jsonify({"status": "error", "message": "Canli tarama baslatma yetkisi sadece Admin kullanicisindadir."}), 403
-
     if SCRAPE_STATUS["running"]:
         return jsonify({"status": "running", "message": "Zaten aktif bir tarama devam ediyor."})
 
@@ -635,9 +632,6 @@ def trigger_scrape():
 @login_required
 def trigger_single_brand_scrape(brand_code: str):
     global SCRAPE_STATUS
-    if session.get("user") != "admin":
-        return jsonify({"status": "error", "message": "Canli tarama baslatma yetkisi sadece Admin kullanicisindadir."}), 403
-
     scraper = SCRAPER_MAP.get(brand_code.lower())
     if scraper is None:
         return jsonify({"status": "error", "message": "Marka bulunamadi."}), 404
