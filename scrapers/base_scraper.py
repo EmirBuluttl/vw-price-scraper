@@ -5,6 +5,7 @@ Shared scraper base utilities and validation pipeline.
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 import threading
 import time
@@ -18,7 +19,18 @@ import requests
 
 log = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent.parent / "car_prices.db"
+def _resolve_db_path() -> Path:
+    configured = (
+        os.environ.get("PRICE_SCRAPER_DB_PATH")
+        or os.environ.get("SCRAPER_DB_PATH")
+        or ""
+    ).strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (Path(__file__).parent.parent / "car_prices.db").resolve()
+
+
+DB_PATH = _resolve_db_path()
 
 _SESSION: requests.Session | None = None
 
