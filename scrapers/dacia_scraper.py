@@ -1,8 +1,5 @@
 """
-dacia_scraper.py  —  Dacia Türkiye fiyat scraper'ı (Çift Fiyat Altyapısı Destekli)
-===================================================================================
-Birincil : Tüm Dacia Model Sayfaları (Sandero, Sandero Stepway, Duster, Jogger, Spring)
-Fallback : arabam.com.tr API
+Dacia Turkiye fiyat scraper.
 """
 
 from __future__ import annotations
@@ -10,26 +7,23 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
-from urllib.parse import urljoin
 
-from bs4 import BeautifulSoup
-
-from .base_scraper import BaseScraper, fmt_price, http_get
-from .arabam_api import fetch_arabam_api
+from .base_scraper import BaseScraper, ValidationProfile, fmt_price, http_get
 
 
 class DaciaScraper(BaseScraper):
     brand = "Dacia"
+    validation_profile = ValidationProfile(
+        min_records=4,
+        required_models=("Sandero", "Duster", "Jogger"),
+        min_required_models=2,
+    )
 
     @property
     def methods(self) -> list[tuple[str, Any]]:
-        return [
-            ("official_site_json", self._fetch_official_site),
-            ("arabam_api_fallback", self._fetch_arabam_fallback),
-        ]
+        return [("official_site_json", self._fetch_official_site)]
 
     def _fetch_official_site(self) -> list[dict]:
-        """Tüm Dacia modellerini ve hem Tavsiye Edilen Liste Fiyatı hem Kampanyalı Fiyatı çek."""
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -40,8 +34,7 @@ class DaciaScraper(BaseScraper):
         records: list[dict] = []
         seen: set[tuple] = set()
 
-        # Dacia resmi model sayfaları
-        dacia_pages = [
+        pages = [
             ("Yeni Sandero", "https://www.dacia.com.tr/modeller/yeni-sandero-bi1-ph2.html"),
             ("Yeni Sandero Stepway", "https://www.dacia.com.tr/modeller/yeni-sandero-stepway-bi1-ph2.html"),
             ("Yeni Duster", "https://www.dacia.com.tr/modeller/yeni-duster.html"),
@@ -49,63 +42,70 @@ class DaciaScraper(BaseScraper):
             ("Fiyat Listesi", "https://www.dacia.com.tr/dacia-fiyat-listesi.html"),
         ]
 
-        for default_name, url in dacia_pages:
+        for default_name, url in pages:
             try:
-                r = http_get(url, headers=headers)
-                match = re.search(r'window\.APP_STATE\s*=\s*JSON\.parse\("(.*?)"\);', r.text, re.DOTALL)
+                response = http_get(url, headers=headers)
+                match = re.search(r'window\.APP_STATE\s*=\s*JSON\.parse\("(.*?)"\);', response.text, re.DOTALL)
                 if not match:
                     continue
                 data = json.loads(json.loads(f'"{match.group(1)}"'))
 
-                def extract_trims(d):
-                    if isinstance(d, dict):
-                        pv = d.get("pricedVersion") or {}
-                        v_label = pv.get("label") or pv.get("name") or d.get("versionName") or d.get("trimName")
-                        
-                        # Model Adı Ayrıştırma (Dacia Fiyat Listesi gibi jenerik başlıkları engelle)
-                        m_name = default_name
-                        if m_name == "Fiyat Listesi":
-                            # Versiyon adından Duster, Sandero, Jogger ayıkla
-                            v_lower = (v_label or "").lower()
-                            if "duster" in v_lower: m_name = "Duster"
-                            elif "stepway" in v_lower: m_name = "Sandero Stepway"
-                            elif "sandero" in v_lower: m_name = "Sandero"
-                            elif "jogger" in v_lower: m_name = "Jogger"
-                            elif "spring" in v_lower: m_name = "Spring"
-                            else: m_name = "Dacia"
+                def extract_trims(payload):
+                    if isinstance(payload, dict):
+                        priced_version = payload.get("pricedVersion") or {}
+                        variant_label = priced_version.get("label") or priced_version.get("name") or payload.get("versionName") or payload.get("trimName")
 
-                        raw_camp = d.get("price") or d.get("displayPrice") or (d.get("webDisplayPrices") or {}).get("displayPrice")
-                        raw_list = d.get("listPrice") or d.get("recommendedPrice") or (d.get("webDisplayPrices") or {}).get("listPrice") or raw_camp
+                        model_name = default_name
+                        if model_name == "Fiyat Listesi":
+                            variant_lower = (variant_label or "").lower()
+                            if "duster" in variant_lower:
+                                model_name = "Duster"
+                            elif "stepway" in variant_lower:
+                                model_name = "Sandero Stepway"
+                            elif "sandero" in variant_lower:
+                                model_name = "Sandero"
+                            elif "jogger" in variant_lower:
+                                model_name = "Jogger"
+                            elif "spring" in variant_lower:
+                                model_name = "Spring"
+                            else:
+                                model_name = "Dacia"
 
-                        if v_label and raw_camp:
+                        raw_campaign = payload.get("price") or payload.get("displayPrice") or (payload.get("webDisplayPrices") or {}).get("displayPrice")
+                        raw_list = payload.get("listPrice") or payload.get("recommendedPrice") or (payload.get("webDisplayPrices") or {}).get("listPrice") or raw_campaign
+
+                        if variant_label and raw_campaign:
                             try:
-                                camp_p = int(float(raw_camp))
-                                list_p = int(float(raw_list)) if raw_list else camp_p
-                                if list_p < camp_p: list_p = camp_p
+                                campaign_price = int(float(raw_campaign))
+                                list_price = int(float(raw_list)) if raw_list else campaign_price
+                                list_price = max(list_price, campaign_price)
 
-                                if camp_p > 100_000:
-                                    key = (m_name, v_label, camp_p)
+                                if campaign_price > 100_000:
+                                    key = (model_name, variant_label, campaign_price)
                                     if key not in seen:
                                         seen.add(key)
-                                        disc = max(0, list_p - camp_p)
-                                        disc_pct = round((disc / list_p) * 100, 1) if list_p > 0 else 0
-                                        records.append({
-                                            "model_name": m_name,
-                                            "variant": v_label,
-                                            "price_raw": fmt_price(camp_p),
-                                            "price_int": camp_p,
-                                            "list_price_int": list_p,
-                                            "campaign_price_int": camp_p,
-                                            "discount_amount_int": disc,
-                                            "discount_pct": disc_pct,
-                                            "currency": "TRY"
-                                        })
+                                        discount_amount = max(0, list_price - campaign_price)
+                                        discount_pct = round((discount_amount / list_price) * 100, 1) if list_price > 0 else 0.0
+                                        records.append(
+                                            {
+                                                "model_name": model_name,
+                                                "variant": variant_label,
+                                                "price_raw": fmt_price(campaign_price),
+                                                "price_int": campaign_price,
+                                                "list_price_int": list_price,
+                                                "campaign_price_int": campaign_price,
+                                                "discount_amount_int": discount_amount,
+                                                "discount_pct": discount_pct,
+                                                "currency": "TRY",
+                                            }
+                                        )
                             except Exception:
                                 pass
-                        for v in d.values():
-                            extract_trims(v)
-                    elif isinstance(d, list):
-                        for item in d:
+
+                        for value in payload.values():
+                            extract_trims(value)
+                    elif isinstance(payload, list):
+                        for item in payload:
                             extract_trims(item)
 
                 extract_trims(data)
@@ -113,6 +113,3 @@ class DaciaScraper(BaseScraper):
                 pass
 
         return records
-
-    def _fetch_arabam_fallback(self) -> list[dict]:
-        return fetch_arabam_api("dacia")
