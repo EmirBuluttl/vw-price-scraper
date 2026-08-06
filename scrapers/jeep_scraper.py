@@ -1,115 +1,126 @@
 """
-jeep_scraper.py  —  Jeep Türkiye Fiyat Scraper'ı (Playwright Canlı Chrome Otomasyonu)
-======================================================================================
-Birincil : Playwright ile https://www.jeep.com.tr/fiyat-listesi Canlı Sayfa Taraması
+Jeep Turkiye fiyat scraper'i.
 """
 
 from __future__ import annotations
 
 import re
 from typing import Any
+
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
-from .base_scraper import BaseScraper, fmt_price
+
+from .base_scraper import BaseScraper, ValidationProfile, fmt_price, http_get, parse_price_str
 
 
 class JeepScraper(BaseScraper):
     brand = "Jeep"
+    validation_profile = ValidationProfile(
+        min_records=4,
+        required_models=("Avenger", "Compass"),
+        min_required_models=2,
+        required_variant_keywords=("Hibrit",),
+    )
+
+    SOURCE_URL = "https://arjfiyat.tofas.com.tr/pricelists?brand=jeep&opncl_performance=true&opncl_advertising=true"
 
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("jeep_playwright_live", self._fetch_jeep_playwright_live),
+            ("jeep_tofas_iframe_live", self._fetch_jeep_tofas_iframe_live),
         ]
 
-    def _fetch_jeep_playwright_live(self) -> list[dict]:
+    def _fetch_jeep_tofas_iframe_live(self) -> list[dict]:
+        response = http_get(self.SOURCE_URL)
+        return self._parse_catalog(response.text)
+
+    def _parse_catalog(self, html: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
         records: list[dict] = []
-        seen: set[tuple] = set()
+        seen: set[tuple[str, str, str, int]] = set()
+        current_model = "Jeep"
 
-        url = "https://www.jeep.com.tr/fiyat-listesi"
+        for element in soup.find_all(["h1", "table"]):
+            if element.name == "h1":
+                heading = self._clean_text(element.get_text(" ", strip=True))
+                normalized_model = self._normalize_model_name(heading)
+                if normalized_model:
+                    current_model = normalized_model
+                continue
 
-        try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+            table = element
+            rows = table.find_all("tr")
+            if not rows:
+                continue
+
+            table_text = self._clean_text(table.get_text(" ", strip=True)).upper()
+            if "TAVSIYE EDILEN ANAHTAR TESLIM FIYATI" not in table_text and "TAVSİYE EDİLEN ANAHTAR TESLİM FİYATI" not in table_text:
+                continue
+
+            for tr in rows[1:]:
+                cols = [self._clean_text(cell.get_text(" ", strip=True)) for cell in tr.find_all(["th", "td"])]
+                if len(cols) < 6:
+                    continue
+
+                raw_model = cols[0]
+                if raw_model.upper() == "MODEL":
+                    continue
+
+                variant_name = self._build_variant_name(raw_model, cols[1], cols[2], cols[3], cols[4])
+                price_int = parse_price_str(cols[5])
+                if not price_int:
+                    continue
+
+                model_name = self._normalize_model_name(raw_model) or current_model
+                model_year = "2026"
+
+                key = (model_name, variant_name, model_year, price_int)
+                if key in seen:
+                    continue
+
+                seen.add(key)
+                records.append(
+                    {
+                        "model_name": model_name,
+                        "variant": variant_name,
+                        "price_raw": fmt_price(price_int),
+                        "price_int": price_int,
+                        "list_price_int": price_int,
+                        "campaign_price_int": price_int,
+                        "discount_amount_int": 0,
+                        "discount_pct": 0.0,
+                        "model_year": model_year,
+                        "currency": "TRY",
+                    }
                 )
-                page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                page.wait_for_timeout(3000)
-
-                # Model başlıklarına tıkla
-                for model_kw in ["Avenger", "Compass", "Renegade", "Wrangler", "Grand Cherokee"]:
-                    try:
-                        elem = page.get_by_text(model_kw).first
-                        if elem:
-                            elem.click(force=True)
-                            page.wait_for_timeout(500)
-                    except Exception:
-                        pass
-
-                soup = BeautifulSoup(page.content(), "html.parser")
-                browser.close()
-
-                current_model = "Jeep"
-
-                for table in soup.find_all("table"):
-                    table_text = table.get_text()
-                    m_search = re.search(r"(Avenger|Renegade|Compass|Wrangler|Grand Cherokee)", table_text, re.IGNORECASE)
-                    if m_search:
-                        current_model = m_search.group(1)
-
-                    for tr in table.find_all("tr"):
-                        cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
-                        if len(cols) >= 2:
-                            variant_raw = cols[0]
-                            if "MODEL" in variant_raw.upper() or "DONANIM" in variant_raw.upper():
-                                continue
-
-                            prices_found = []
-                            for col_val in cols[1:]:
-                                pm = re.search(r"(\d[\d.,\s]+)", col_val)
-                                if pm:
-                                    p_val = int(re.sub(r"[^\d]", "", pm.group(1)))
-                                    if 100_000 < p_val < 15_000_000:
-                                        prices_found.append(p_val)
-
-                            if len(prices_found) >= 2:
-                                list_price = prices_found[0]
-                                camp_price = prices_found[1]
-                            elif len(prices_found) == 1:
-                                list_price = prices_found[0]
-                                camp_price = prices_found[0]
-                            else:
-                                continue
-
-                            year_m = re.search(r"\b(202[4-7])\b", f"{variant_raw} {table_text}")
-                            year_val = year_m.group(1) if year_m else "2026"
-
-                            model_name = current_model
-                            if "AVENGER" in variant_raw.upper(): model_name = "Avenger"
-                            elif "RENEGADE" in variant_raw.upper(): model_name = "Renegade"
-                            elif "COMPASS" in variant_raw.upper(): model_name = "Compass"
-                            elif "WRANGLER" in variant_raw.upper(): model_name = "Wrangler"
-
-                            key = (model_name, variant_raw, year_val, camp_price)
-                            if key not in seen:
-                                seen.add(key)
-                                disc = max(0, list_price - camp_price)
-                                disc_pct = round((disc / list_price) * 100, 1) if list_price > 0 else 0.0
-
-                                records.append({
-                                    "model_name": model_name,
-                                    "variant": variant_raw,
-                                    "price_raw": fmt_price(camp_price),
-                                    "price_int": camp_price,
-                                    "list_price_int": list_price,
-                                    "campaign_price_int": camp_price,
-                                    "discount_amount_int": disc,
-                                    "discount_pct": disc_pct,
-                                    "model_year": year_val,
-                                    "currency": "TRY"
-                                })
-        except Exception as e:
-            print(f"Playwright Jeep Live Scrape Error: {e}")
 
         return records
+
+    def _normalize_model_name(self, value: str) -> str | None:
+        upper_value = self._clean_text(value).upper()
+        if "AVENGER" in upper_value:
+            return "Avenger"
+        if "COMPASS" in upper_value:
+            return "Compass"
+        if "RENEGADE" in upper_value:
+            return "Renegade"
+        if "WRANGLER" in upper_value:
+            return "Wrangler"
+        if "CHEROKEE" in upper_value:
+            return "Grand Cherokee"
+        return None
+
+    def _build_variant_name(self, model: str, cekis: str, donanim: str, sanziman: str, yakit: str) -> str:
+        parts = [
+            self._clean_text(model),
+            self._clean_text(cekis),
+            self._clean_text(donanim),
+            self._clean_text(sanziman),
+            self._clean_text(yakit),
+        ]
+        return " ".join(part for part in parts if part).strip()
+
+    @staticmethod
+    def _clean_text(value: str) -> str:
+        cleaned = re.sub(r"\s+", " ", value or "").strip()
+        cleaned = cleaned.replace("SUMMİT", "SUMMIT").replace("ELEKTRİKLİ", "ELEKTRIKLI")
+        return cleaned
