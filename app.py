@@ -34,7 +34,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from scrapers.base_scraper import DB_PATH, init_db, log_run, save_records, fmt_price
+from scrapers.base_scraper import DB_PATH, SharedPlaywrightRuntime, init_db, log_run, save_records, fmt_price
 from scrapers.vw_scraper import VWScraper
 from scrapers.skoda_scraper import SkodaScraper
 from scrapers.renault_scraper import RenaultScraper
@@ -78,8 +78,11 @@ ALL_SCRAPERS = [
     MaseratiScraper(),
 ]
 
+ALL_SCRAPERS = [scraper for scraper in ALL_SCRAPERS if scraper.brand != "Maserati"]
+
 SCRAPER_MAP = {s.brand.lower(): s for s in ALL_SCRAPERS}
 SCRAPE_STATUS = {"running": False, "message": "Bosta", "progress": 0, "last_run": None}
+SCRAPE_LOCK = threading.Lock()
 
 # Gruplar: Tofaş Grubu & Bağımsız Markalar
 OEM_GROUPS = {
@@ -91,12 +94,28 @@ OEM_GROUPS = {
     ],
 }
 
+OEM_GROUPS["tofas"] = [brand for brand in OEM_GROUPS["tofas"] if brand != "Maserati"]
+
 
 def get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     init_db(conn)
     return conn
+
+
+def _brand_to_code(brand_name: str) -> str:
+    return (
+        brand_name.lower()
+        .replace(" ", "")
+        .replace("ë", "e")
+        .replace("é", "e")
+        .replace("ç", "c")
+        .replace("ş", "s")
+        .replace("ı", "i")
+        .replace("ö", "o")
+        .replace("ü", "u")
+    )
 
 
 def login_required(f):
@@ -275,6 +294,7 @@ def api_brands():
     for r in rows:
         d = dict(r)
         d["is_tofas_group"] = d["brand"] in tofas_set
+        d["scrape_code"] = _brand_to_code(d["brand"])
         brand_list.append(d)
 
     return jsonify({
@@ -551,37 +571,49 @@ def api_variant_history(variant_id: int):
     })
 
 
-def _run_scrapers_thread():
+def _run_single_scraper(conn: sqlite3.Connection, scraper, runtime: SharedPlaywrightRuntime | None) -> tuple[str, int]:
+    brand_name = scraper.brand
+    try:
+        records, method_used, validation = scraper.run(conn, runtime=runtime)
+        if records and method_used != "failed":
+            inserted = save_records(conn, brand_name, records, method_used)
+            log_run(conn, brand_name, "success", method_used, len(records), f"{inserted} yeni kayit | {validation.message}")
+            return "success", len(records)
+
+        log_run(conn, brand_name, "error", method_used, 0, validation.message)
+        return "error", 0
+    except Exception as exc:
+        log_run(conn, brand_name, "error", "exception", 0, str(exc))
+        return "error", 0
+
+
+def _run_scrapers_thread(scrapers_to_run=None):
     global SCRAPE_STATUS
-    SCRAPE_STATUS["running"] = True
-    SCRAPE_STATUS["message"] = "Tarama baslatiliyor..."
-    SCRAPE_STATUS["progress"] = 0
+    scrapers = scrapers_to_run or ALL_SCRAPERS
+    with SCRAPE_LOCK:
+        SCRAPE_STATUS["running"] = True
+        SCRAPE_STATUS["message"] = "Tarama baslatiliyor..."
+        SCRAPE_STATUS["progress"] = 0
 
-    conn = sqlite3.connect(str(DB_PATH))
-    init_db(conn)
-
-    total_scrapers = len(ALL_SCRAPERS)
-    for idx, scraper in enumerate(ALL_SCRAPERS):
-        brand_name = scraper.brand
-        SCRAPE_STATUS["message"] = f"{brand_name} taraniyor ({idx+1}/{total_scrapers})..."
-        SCRAPE_STATUS["progress"] = int(((idx) / total_scrapers) * 100)
+        conn = sqlite3.connect(str(DB_PATH))
+        init_db(conn)
+        runtime = SharedPlaywrightRuntime().start()
 
         try:
-            records, method_used = scraper.run(conn)
-            is_stale = method_used == "stale"
-            if records and method_used != "failed":
-                inserted = save_records(conn, brand_name, records, method_used, 1 if is_stale else 0)
-                log_run(conn, brand_name, "fallback" if is_stale else "success", method_used, len(records), f"{inserted} yeni kayit")
-            else:
-                log_run(conn, brand_name, "error", method_used, 0, "Veri bulunamadi")
-        except Exception as exc:
-            log_run(conn, brand_name, "error", "exception", 0, str(exc))
+            total_scrapers = len(scrapers)
+            for idx, scraper in enumerate(scrapers):
+                brand_name = scraper.brand
+                SCRAPE_STATUS["message"] = f"{brand_name} taraniyor ({idx+1}/{total_scrapers})..."
+                SCRAPE_STATUS["progress"] = int((idx / total_scrapers) * 100)
+                _run_single_scraper(conn, scraper, runtime)
 
-    conn.close()
-    SCRAPE_STATUS["running"] = False
-    SCRAPE_STATUS["message"] = "Tarama tamamlandi!"
-    SCRAPE_STATUS["progress"] = 100
-    SCRAPE_STATUS["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            SCRAPE_STATUS["message"] = "Tarama tamamlandi!"
+            SCRAPE_STATUS["progress"] = 100
+            SCRAPE_STATUS["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        finally:
+            runtime.stop()
+            conn.close()
+            SCRAPE_STATUS["running"] = False
 
 
 @app.route("/api/trigger-scrape", methods=["POST"])
@@ -597,6 +629,25 @@ def trigger_scrape():
     t = threading.Thread(target=_run_scrapers_thread)
     t.start()
     return jsonify({"status": "started", "message": "Tarama arka planda baslatildi."})
+
+
+@app.route("/api/trigger-scrape/<brand_code>", methods=["POST"])
+@login_required
+def trigger_single_brand_scrape(brand_code: str):
+    global SCRAPE_STATUS
+    if session.get("user") != "admin":
+        return jsonify({"status": "error", "message": "Canli tarama baslatma yetkisi sadece Admin kullanicisindadir."}), 403
+
+    scraper = SCRAPER_MAP.get(brand_code.lower())
+    if scraper is None:
+        return jsonify({"status": "error", "message": "Marka bulunamadi."}), 404
+
+    if SCRAPE_STATUS["running"]:
+        return jsonify({"status": "running", "message": "Zaten aktif bir tarama devam ediyor."})
+
+    t = threading.Thread(target=_run_scrapers_thread, args=([scraper],))
+    t.start()
+    return jsonify({"status": "started", "message": f"{scraper.brand} icin canli tarama baslatildi."})
 
 
 @app.route("/api/export-excel")
@@ -754,8 +805,9 @@ def health_check():
 
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
     print("=" * 70)
     print("  KURUMSAL COKLU MARKA ARAC FIYAT SCRAPER WEB PANELI")
-    print("  Tarayicida acin: http://localhost:5000")
+    print(f"  Tarayicida acin: http://localhost:{port}")
     print("=" * 70)
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=True)

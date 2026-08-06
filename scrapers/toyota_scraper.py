@@ -1,127 +1,122 @@
 """
-toyota_scraper.py  —  Toyota Türkiye fiyat scraper'ı
-===================================================
-Birincil : Toyota XML fiyat listesi (turkiye.toyota.com.tr/middle/fiyat-listesi/fiyat_v3.xml)
-Fallback : arabam.com.tr HTML ve diğer statik sayfalar
+Toyota Turkiye fiyat scraper.
 """
 
 from __future__ import annotations
 
-import logging
 import re
-import xml.etree.ElementTree as ET
 from typing import Any
 
-from .base_scraper import BaseScraper, fmt_price, http_get, parse_price_str
+from bs4 import BeautifulSoup
 
-log = logging.getLogger(__name__)
-
-XML_URL = "https://turkiye.toyota.com.tr/middle/fiyat-listesi/fiyat_v3.xml"
-
-
-def _parse_toyota_xml(xml_text: str) -> list[dict]:
-    # UTF-8 BOM temizliği ve XML başlangıcını bulma
-    content_str = xml_text.strip()
-    xml_start = content_str.find("<?xml")
-    if xml_start != -1:
-        content_str = content_str[xml_start:]
-
-    try:
-        root = ET.fromstring(content_str)
-    except Exception as e:
-        log.warning("Toyota XML parsing failed: %s", e)
-        return []
-
-    records: list[dict] = []
-    seen: set[tuple] = set()
-
-    for m in root.findall("Model"):
-        # Model aktif değilse atla
-        if m.get("Aktifmi") == "0":
-            continue
-
-        model_name = m.get("name") or ""
-        # Temel model adlarını temizle
-        model_name = model_name.replace("Yeni", "").strip()
-
-        prices = m.findall("ModelFiyat")
-        for p in prices:
-            p_desc = p.find("Model").text if p.find("Model") is not None else ""
-            govde = p.find("Govde").text if p.find("Govde") is not None else ""
-
-            # Hem Liste Fiyatını (MSRP) hem Kampanyalı Fiyatı oku
-            list_p_int = None
-            for l_key in ["ListeFiyati2", "ListeFiyati1"]:
-                l_node = p.find(l_key)
-                if l_node is not None and l_node.text:
-                    parsed_l = parse_price_str(l_node.text)
-                    if parsed_l and parsed_l >= 100_000:
-                        list_p_int = parsed_l
-                        break
-
-            camp_p_int = None
-            for c_key in ["KampanyaliFiyati2", "OTVTesvikli1", "KampanyaliFiyati1"]:
-                c_node = p.find(c_key)
-                if c_node is not None and c_node.text:
-                    parsed_c = parse_price_str(c_node.text)
-                    if parsed_c and parsed_c >= 100_000:
-                        camp_p_int = parsed_c
-                        break
-
-            # Kampanyalı fiyat yoksa liste fiyatını al, liste fiyatı yoksa kampanyalıyı al
-            final_campaign_price = camp_p_int if camp_p_int else list_p_int
-            final_list_price = list_p_int if list_p_int else final_campaign_price
-
-            if not final_campaign_price:
-                continue
-
-            discount_amount = (final_list_price - final_campaign_price) if final_list_price > final_campaign_price else 0
-
-            # "ÖTV'li versiyonlarda" gibi ek vergi/aksesuar satırlarını atla
-            if "ÖTV" in p_desc or "versiyon" in p_desc.lower() or "fark" in p_desc.lower():
-                if final_campaign_price < 100_000:
-                    continue
-
-            # Variant ismini oluştur
-            variant = f"{govde} {p_desc}".strip()
-            # UTF-8 decode bozukluklarını düzelt (örnek: YENÄ° -> YENİ)
-            variant = variant.replace("YENÄ°", "YENİ").replace("Ã–", "Ö").replace("Ã§", "ç").replace("ÅŸ", "ş")
-            model_name_clean = model_name.replace("YENÄ°", "YENİ").replace("Ã–", "Ö").replace("Ã§", "ç")
-
-            key = (model_name_clean, variant)
-            if key not in seen:
-                seen.add(key)
-                records.append({
-                    "model_name": model_name_clean,
-                    "variant": variant,
-                    "price_raw": fmt_price(final_campaign_price),
-                    "price_int": final_campaign_price,
-                    "list_price_int": final_list_price,
-                    "campaign_price_int": final_campaign_price,
-                    "discount_amount_int": discount_amount,
-                    "currency": "TRY"
-                })
-
-    return records
+from .base_scraper import BaseScraper, ValidationProfile, fmt_price, parse_price_str
 
 
 class ToyotaScraper(BaseScraper):
     brand = "Toyota"
+    validation_profile = ValidationProfile(
+        min_records=10,
+        required_models=("Corolla", "Corolla Hybrid", "Corolla Cross Hybrid", "C-HR Hybrid", "Yaris"),
+        min_required_models=4,
+    )
+
+    SOURCE_URL = "https://turkiye.toyota.com.tr/middle/fiyat-listesi/"
 
     @property
     def methods(self) -> list[tuple[str, Any]]:
-        return [
-            ("xml_feed", self._fetch_xml_feed),
-        ]
+        return [("toyota_official_catalog", self._fetch_toyota_official_catalog)]
 
-    def _fetch_xml_feed(self) -> list[dict]:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/125.0.0.0 Safari/537.36"
-            ),
-            "Referer": "https://turkiye.toyota.com.tr/middle/fiyat-listesi/"
-        }
-        r = http_get(XML_URL, headers=headers)
-        return _parse_toyota_xml(r.text)
+    def _fetch_toyota_official_catalog(self) -> list[dict]:
+        html = self.fetch_page_html(self.SOURCE_URL, post_load_wait_ms=4000)
+        return self._parse_catalog(html)
+
+    def _parse_catalog(self, html: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        records: list[dict] = []
+        seen: set[tuple[str, str, str, int]] = set()
+
+        for table in soup.find_all("table"):
+            rows = table.find_all("tr")
+            if len(rows) < 2:
+                continue
+
+            header_text = self._clean_text(rows[0].get_text(" ", strip=True))
+            normalized_header = self._latinize(header_text).upper()
+            if "VERSIYON" not in normalized_header:
+                continue
+            if "OTV MUAFIYETLI" in normalized_header:
+                continue
+
+            model_name = self._extract_model_name(table)
+            if not model_name:
+                continue
+
+            for tr in rows[1:]:
+                cols = [self._clean_text(cell.get_text(" ", strip=True)) for cell in tr.find_all(["th", "td"])]
+                if len(cols) < 2:
+                    continue
+
+                variant_name = cols[0]
+                if not variant_name or variant_name.startswith("%") or "RENK FARK" in self._latinize(variant_name).upper():
+                    continue
+
+                list_price_int = parse_price_str(cols[1]) if len(cols) >= 2 else 0
+                campaign_price_int = parse_price_str(cols[2]) if len(cols) >= 3 else 0
+
+                if not list_price_int:
+                    continue
+                if not campaign_price_int:
+                    campaign_price_int = list_price_int
+
+                model_year = "2026"
+                key = (model_name, variant_name, model_year, campaign_price_int)
+                if key in seen:
+                    continue
+
+                seen.add(key)
+                discount_amount = max(0, list_price_int - campaign_price_int)
+                discount_pct = round((discount_amount / list_price_int) * 100, 1) if list_price_int > 0 else 0.0
+                records.append(
+                    {
+                        "model_name": model_name,
+                        "variant": variant_name,
+                        "price_raw": fmt_price(campaign_price_int),
+                        "price_int": campaign_price_int,
+                        "list_price_int": list_price_int,
+                        "campaign_price_int": campaign_price_int,
+                        "discount_amount_int": discount_amount,
+                        "discount_pct": discount_pct,
+                        "model_year": model_year,
+                        "currency": "TRY",
+                    }
+                )
+
+        return records
+
+    def _extract_model_name(self, table) -> str | None:
+        heading = table.find_previous(["h1", "h2", "h3", "h4", "strong"])
+        if heading:
+            return self._clean_text(heading.get_text(" ", strip=True))
+        return None
+
+    @staticmethod
+    def _clean_text(value: str) -> str:
+        return re.sub(r"\s+", " ", value or "").strip()
+
+    @staticmethod
+    def _latinize(value: str) -> str:
+        return (
+            (value or "")
+            .replace("Ç", "C")
+            .replace("ç", "c")
+            .replace("Ğ", "G")
+            .replace("ğ", "g")
+            .replace("İ", "I")
+            .replace("ı", "i")
+            .replace("Ö", "O")
+            .replace("ö", "o")
+            .replace("Ş", "S")
+            .replace("ş", "s")
+            .replace("Ü", "U")
+            .replace("ü", "u")
+        )

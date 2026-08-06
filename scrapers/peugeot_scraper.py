@@ -1,138 +1,185 @@
 """
-peugeot_scraper.py  —  Peugeot Türkiye Fiyat Scraper'ı (Resmi 2026 MY Kataloğu & 408 145hp Güncel)
-===================================================================================================
-Birincil : Peugeot Türkiye Resmi 2026 Fiyat Kataloğu
+Peugeot Turkiye fiyat scraper.
 """
 
 from __future__ import annotations
 
 import re
 from typing import Any
+
 from bs4 import BeautifulSoup
-from .base_scraper import BaseScraper, fmt_price, http_get
+
+from .base_scraper import BaseScraper, ValidationProfile, fmt_price, http_get, parse_price_str
 
 
 class PeugeotScraper(BaseScraper):
     brand = "Peugeot"
+    validation_profile = ValidationProfile(
+        min_records=10,
+        required_models=("2008", "408", "3008", "5008"),
+        min_required_models=4,
+        required_variant_keywords=("145",),
+    )
+
+    MODEL_PATTERNS = (
+        ("EXPERT TRAVELLER", "Expert Traveller"),
+        ("PARTNER VAN", "Partner Van"),
+        ("BOXER MINIBUS", "Boxer Minibus"),
+        ("BOXER MINIBÜS", "Boxer Minibus"),
+        ("BOXER VAN", "Boxer Van"),
+        ("EXPERT VAN", "Expert Van"),
+        ("RIFTER", "Rifter"),
+        ("E-5008", "E-5008"),
+        ("E-3008", "E-3008"),
+        ("E-2008", "E-2008"),
+        ("E-308", "E-308"),
+        ("E-208", "E-208"),
+        ("5008", "5008"),
+        ("3008", "3008"),
+        ("2008", "2008"),
+        ("408", "408"),
+        ("308", "308"),
+        ("208", "208"),
+    )
 
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("peugeot_official_catalog", self._fetch_peugeot_catalog),
+            ("peugeot_official_html_live", self._fetch_peugeot_official_html_live),
+            ("peugeot_playwright_live", self._fetch_peugeot_playwright_live),
         ]
 
-    def _fetch_peugeot_catalog(self) -> list[dict]:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-        }
+    def _fetch_peugeot_official_html_live(self) -> list[dict]:
+        response = http_get("https://kampanya.peugeot.com.tr/fiyat-listesi/")
+        return self._parse_catalog(response.text)
+
+    def _fetch_peugeot_playwright_live(self) -> list[dict]:
+        html = self.fetch_page_html(
+            "https://kampanya.peugeot.com.tr/fiyat-listesi/",
+            post_load_wait_ms=3000,
+        )
+        return self._parse_catalog(html)
+
+    def _parse_catalog(self, html: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
         records: list[dict] = []
-        seen: set[tuple] = set()
+        seen: set[tuple[str, str, str, int]] = set()
 
-        # Resmi Peugeot 2026 MY Güncel Kataloğu (MSRP Liste & Lansmana Özel Nakit Satış Fiyatları)
-        # Format: (model_name, variant_name, year, list_price_int, campaign_price_int)
-        official_peugeot_catalog = [
-            # Yeni PEUGEOT 408 2026 MY (1.2 Hybrid 145hp eDCS6)
-            ("408", "Yeni 408 ALLURE 1.2 Hybrid 145hp eDCS6", "2026", 2580000, 2330000),
-            ("408", "Yeni 408 ALLURE 1.2 Hybrid 145hp eDCS6 Cam Tavan", "2026", 2695000, 2695000),
-            ("408", "Yeni 408 GT 1.2 Hybrid 145hp eDCS6", "2026", 2910000, 2745000),
+        for heading in soup.find_all(re.compile(r"^h[1-4]$")):
+            heading_text = self._clean_text(heading.get_text(" ", strip=True))
+            model_name = self._resolve_model_name(heading_text)
+            if not model_name:
+                continue
 
-            # 208
-            ("208", "208 Active Prime 1.2 PureTech 100 hp EAT8", "2026", 1360000, 1290000),
-            ("208", "208 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 1490000, 1420000),
-            ("208", "208 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 1640000, 1560000),
+            table = self._find_model_table(heading)
+            if table is None:
+                continue
 
-            # E-208
-            ("E-208", "E-208 GT 156 hp (115 kW) Elektrik", "2026", 1550000, 1480000),
+            table_text = self._clean_text(table.get_text(" ", strip=True))
+            year_match = re.search(r"\b(202[4-7])\s*MY\b", table_text, re.IGNORECASE)
+            model_year = year_match.group(1) if year_match else "2026"
 
-            # 308
-            ("308", "308 Active Prime 1.2 Hybrid 136 hp e-DCS6", "2026", 1660000, 1580000),
-            ("308", "308 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 1770000, 1690000),
-            ("308", "308 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 1960000, 1880000),
+            for tr in table.find_all("tr"):
+                cols = [self._clean_text(cell.get_text(" ", strip=True)) for cell in tr.find_all(["th", "td"])]
+                if len(cols) < 2:
+                    continue
 
-            # E-308
-            ("E-308", "E-308 GT 156 hp (115 kW) Elektrik", "2026", 1930000, 1850000),
+                variant = cols[0]
+                if not self._is_variant_row(variant):
+                    continue
 
-            # 2008
-            ("2008", "2008 Active Prime 1.2 PureTech 130 hp EAT8", "2026", 1690000, 1610000),
-            ("2008", "2008 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 1830000, 1750000),
-            ("2008", "2008 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2070000, 1980000),
+                prices = [parse_price_str(col) for col in cols[1:]]
+                prices = [price for price in prices if price]
+                if not prices:
+                    continue
 
-            # E-2008
-            ("E-2008", "E-2008 GT 156 hp (115 kW) Elektrik", "2026", 1970000, 1890000),
+                list_price = prices[0]
+                campaign_price = prices[1] if len(prices) > 1 else prices[0]
+                variant_model = self._resolve_model_name(variant) or model_name
+                discount_amount = max(0, list_price - campaign_price)
+                discount_pct = round((discount_amount / list_price) * 100, 1) if discount_amount and list_price else 0.0
 
-            # 3008
-            ("3008", "Yeni 3008 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 2290000, 2190000),
-            ("3008", "Yeni 3008 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2590000, 2490000),
+                key = (variant_model, variant, model_year, campaign_price)
+                if key in seen:
+                    continue
 
-            # E-3008
-            ("E-3008", "Yeni E-3008 GT 210 hp (157 kW) Elektrik", "2026", 2690000, 2590000),
-
-            # 5008
-            ("5008", "Yeni 5008 Allure 1.2 Hybrid 136 hp e-DCS6", "2026", 2660000, 2550000),
-            ("5008", "Yeni 5008 GT 1.2 Hybrid 136 hp e-DCS6", "2026", 2960000, 2850000),
-
-            # Ticari Araçlar (Expert 145 HP, Rifter, Partner, Boxer)
-            ("Rifter", "Rifter Allure 1.5 BlueHDi 130 hp EAT8", "2026", 1390000, 1320000),
-            ("Rifter", "Rifter GT 1.5 BlueHDi 130 hp EAT8", "2026", 1520000, 1450000),
-            ("Partner Van", "Partner Van Pro 1.5 BlueHDi 100 hp Manuel", "2026", 1040000, 995000),
-            ("Expert Van", "Expert Van L3 2.0 BlueHDi 145 hp Manuel", "2026", 1340000, 1280000),
-            ("Expert Combi", "Expert Combi 2.0 BlueHDi 145 hp EAT8 Otomatik", "2026", 1540000, 1470000),
-            ("Boxer Van", "Boxer Van L3H2 2.2 BlueHDi 140 hp Manuel", "2026", 1450000, 1380000),
-        ]
-
-        try:
-            r = http_get("https://www.peugeot.com.tr/fiyat-listesi.html", headers=headers, timeout=10)
-            soup = BeautifulSoup(r.text, "html.parser")
-            for t in soup.find_all("table"):
-                for tr in t.find_all("tr"):
-                    cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
-                    if len(cols) >= 2:
-                        m_name = cols[0]
-                        v_name = cols[1] if len(cols) > 2 else cols[0]
-                        price_text = cols[-1]
-                        m = re.search(r"(\d[\d.,\s]+)", price_text)
-                        if m:
-                            p_int = int(re.sub(r"[^\d]", "", m.group(1)))
-                            if 100_000 < p_int < 10_000_000:
-                                year_m = re.search(r"\b(202[4-7])\b", f"{m_name} {v_name}")
-                                year_val = year_m.group(1) if year_m else "2026"
-                                key = (m_name, v_name, year_val, p_int)
-                                if key not in seen:
-                                    seen.add(key)
-                                    records.append({
-                                        "model_name": m_name,
-                                        "variant": v_name,
-                                        "price_raw": fmt_price(p_int),
-                                        "price_int": p_int,
-                                        "list_price_int": p_int,
-                                        "campaign_price_int": p_int,
-                                        "discount_amount_int": 0,
-                                        "discount_pct": 0.0,
-                                        "model_year": year_val,
-                                        "currency": "TRY"
-                                    })
-        except Exception:
-            pass
-
-        if not records:
-            for item in official_peugeot_catalog:
-                m_name, v_name, year, list_p, camp_p = item[0], item[1], item[2], item[3], item[4]
-                key = (m_name, v_name, year, camp_p)
-                if key not in seen:
-                    seen.add(key)
-                    disc = max(0, list_p - camp_p)
-                    disc_pct = round((disc / list_p) * 100, 1) if list_p > 0 else 0.0
-                    records.append({
-                        "model_name": m_name,
-                        "variant": v_name,
-                        "price_raw": fmt_price(camp_p),
-                        "price_int": camp_p,
-                        "list_price_int": list_p,
-                        "campaign_price_int": camp_p,
-                        "discount_amount_int": disc,
-                        "discount_pct": disc_pct,
-                        "model_year": year,
-                        "currency": "TRY"
-                    })
+                seen.add(key)
+                records.append(
+                    {
+                        "model_name": variant_model,
+                        "variant": variant,
+                        "price_raw": fmt_price(campaign_price),
+                        "price_int": campaign_price,
+                        "list_price_int": list_price,
+                        "campaign_price_int": campaign_price,
+                        "discount_amount_int": discount_amount,
+                        "discount_pct": discount_pct,
+                        "model_year": model_year,
+                        "currency": "TRY",
+                    }
+                )
 
         return records
+
+    def _find_model_table(self, heading) -> Any | None:
+        current = heading
+        while current is not None:
+            current = current.find_next()
+            if current is None:
+                return None
+
+            tag_name = getattr(current, "name", "") or ""
+            if re.fullmatch(r"h[1-4]", tag_name, re.IGNORECASE):
+                return None
+
+            if tag_name != "table":
+                continue
+
+            table_text = self._clean_text(current.get_text(" ", strip=True)).upper()
+            if "MODELLER" not in table_text:
+                continue
+            if "OPSIYONLAR" in table_text or "OPSİYONLAR" in table_text:
+                continue
+            return current
+
+        return None
+
+    def _is_variant_row(self, value: str) -> bool:
+        upper_value = self._clean_text(value).upper()
+        if not upper_value:
+            return False
+
+        blocked_tokens = (
+            "MODELLER",
+            "OPSIYONLAR",
+            "OPSİYONLAR",
+            "VERSIYONLAR",
+            "VERSİYONLAR",
+            "INTERNET SITEMIZDE",
+            "İNTERNET SİTEMİZDE",
+            "BELIRTILEN ANAHTAR",
+            "BELİRTİLEN ANAHTAR",
+            "TOFAS",
+            "TOFAŞ",
+            "YETKILI BAYI ARA",
+            "HEMEN KESFET",
+            "HEMEN KEŞFET",
+        )
+        if any(token in upper_value for token in blocked_tokens):
+            return False
+
+        if upper_value in {"BENZIN", "BENZİN", "DIZEL", "DİZEL", "HYBRID", "ELEKTRIK", "ELEKTRİK"}:
+            return False
+
+        return any(pattern in upper_value for pattern, _ in self.MODEL_PATTERNS)
+
+    def _resolve_model_name(self, text: str) -> str | None:
+        upper_text = self._clean_text(text).upper()
+        for pattern, model_name in self.MODEL_PATTERNS:
+            if pattern in upper_text:
+                return model_name
+        return None
+
+    @staticmethod
+    def _clean_text(value: str) -> str:
+        return re.sub(r"\s+", " ", value or "").strip()

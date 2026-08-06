@@ -16,7 +16,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
-from .base_scraper import BaseScraper, fmt_price, http_get, http_post, parse_price_str
+from .base_scraper import BaseScraper, ValidationProfile, fmt_price, http_get, http_post, parse_price_str
 
 log = logging.getLogger(__name__)
 
@@ -68,6 +68,11 @@ def _extract_model_ids(html: str) -> list[str]:
 
 class HyundaiScraper(BaseScraper):
     brand = "Hyundai"
+    validation_profile = ValidationProfile(
+        min_records=6,
+        required_models=("i20", "BAYON", "TUCSON", "KONA"),
+        min_required_models=2,
+    )
 
     @property
     def methods(self) -> list[tuple[str, Any]]:

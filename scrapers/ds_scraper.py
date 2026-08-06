@@ -1,92 +1,130 @@
 """
-ds_scraper.py  —  DS Automobiles Türkiye (Tofaş Grubu) Fiyat Scraper'ı
-========================================================================
-Birincil : DS Automobiles Türkiye Resmi Fiyat Kataloğu & Model Listeleri
+DS Automobiles Turkiye fiyat scraper'i.
 """
 
 from __future__ import annotations
 
 import re
 from typing import Any
-from bs4 import BeautifulSoup
-from .base_scraper import BaseScraper, fmt_price, http_get
 
-_CLEAN = re.compile(r"\s+")
+from bs4 import BeautifulSoup
+
+from .base_scraper import BaseScraper, ValidationProfile, fmt_price, http_get, parse_price_str
 
 
 class DSScraper(BaseScraper):
     brand = "DS Automobiles"
+    validation_profile = ValidationProfile(
+        min_records=2,
+        required_models=("DS 7", "N°4"),
+        min_required_models=2,
+        required_variant_keywords=("BlueHDi",),
+    )
+
+    MODEL_URLS = {
+        "DS 7": "https://talep.dsautomobiles.com.tr/fiyat-listesi-ds7.html",
+        "N°4": "https://talep.dsautomobiles.com.tr/fiyat-listesi-n4.html",
+    }
 
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("ds_official_catalog", self._fetch_ds_catalog),
+            ("ds_official_catalog", self._fetch_ds_official_catalog),
         ]
 
-    def _fetch_ds_catalog(self) -> list[dict]:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        }
+    def _fetch_ds_official_catalog(self) -> list[dict]:
         records: list[dict] = []
-        seen: set[tuple] = set()
+        seen: set[tuple[str, str, str, int]] = set()
 
-        official_ds_catalog = [
-            ("DS 3", "DS 3 Performance Line 1.2 PureTech 130 hp EAT8", 1645000),
-            ("DS 3", "DS 3 Opera 1.2 PureTech 130 hp EAT8", 1825000),
-            ("DS 3 E-TENSE", "DS 3 E-TENSE Opera 115 kW Elektrik", 1945000),
-            ("DS 4", "DS 4 Pallas 1.2 PureTech 130 hp EAT8", 1995000),
-            ("DS 4", "DS 4 Etoile 1.2 PureTech 130 hp EAT8", 2245000),
-            ("DS 4", "DS 4 Performance Line 1.5 BlueHDi 130 hp EAT8", 2145000),
-            ("DS 7", "DS 7 Pallas 1.5 BlueHDi 130 hp EAT8", 2695000),
-            ("DS 7", "DS 7 Opera 1.5 BlueHDi 130 hp EAT8", 2985000),
-            ("DS 7 E-TENSE", "DS 7 E-TENSE 4x4 300 hp Opera Plug-in Hybrid", 3650000),
-            ("DS 9", "DS 9 Opera 1.6 PureTech 225 hp EAT8", 3450000),
-            ("DS 9 E-TENSE", "DS 9 E-TENSE 250 hp Opera Plug-in Hybrid", 3895000),
-        ]
-
-        try:
-            r = http_get("https://www.dsautomobiles.com.tr/fiyat-listesi.html", headers=headers)
-            soup = BeautifulSoup(r.text, "html.parser")
-            for t in soup.find_all("table"):
-                for tr in t.find_all("tr"):
-                    cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
-                    if len(cols) >= 2:
-                        m_name = cols[0]
-                        v_name = cols[1] if len(cols) > 2 else cols[0]
-                        price_text = cols[-1]
-                        m = re.search(r"(\d[\d.,\s]+)", price_text)
-                        if m:
-                            p_int = int(re.sub(r"[^\d]", "", m.group(1)))
-                            if 100_000 < p_int < 15_000_000:
-                                key = (m_name, v_name, p_int)
-                                if key not in seen:
-                                    seen.add(key)
-                                    records.append({
-                                        "model_name": m_name,
-                                        "variant": v_name,
-                                        "price_raw": fmt_price(p_int),
-                                        "price_int": p_int,
-                                        "currency": "TRY",
-                                        "model_year": "2026",
-                                    })
-        except Exception:
-            pass
-
-        if not records:
-            for item in official_ds_catalog:
-                m_name, v_name, p_int = item[0], item[1], item[2]
-                key = (m_name, v_name, p_int)
-                if key not in seen:
-                    seen.add(key)
-                    records.append({
-                        "model_name": m_name,
-                        "variant": v_name,
-                        "price_raw": fmt_price(p_int),
-                        "price_int": p_int,
-                        "currency": "TRY",
-                        "model_year": "2026",
-                    })
+        for model_name, url in self.MODEL_URLS.items():
+            response = http_get(url)
+            html = response.content.decode("utf-8", errors="replace")
+            page_records = self._parse_model_page(model_name, html)
+            for record in page_records:
+                key = (
+                    record["model_name"],
+                    record["variant"],
+                    record["model_year"],
+                    record["price_int"],
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                records.append(record)
 
         return records
+
+    def _parse_model_page(self, model_name: str, html: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        records: list[dict] = []
+
+        for li in soup.find_all("li"):
+            em_values = [self._clean_text(em.get_text(" ", strip=True)) for em in li.find_all("em")]
+            if len(em_values) < 2:
+                continue
+
+            variant_name = em_values[0]
+            price_int = parse_price_str(em_values[1])
+            if not variant_name or not price_int:
+                continue
+
+            normalized_model = self._normalize_model_name(variant_name) or model_name
+            model_year = self._extract_model_year(li.get_text(" ", strip=True))
+
+            records.append(
+                {
+                    "model_name": normalized_model,
+                    "variant": variant_name,
+                    "price_raw": fmt_price(price_int),
+                    "price_int": price_int,
+                    "list_price_int": price_int,
+                    "campaign_price_int": price_int,
+                    "discount_amount_int": 0,
+                    "discount_pct": 0.0,
+                    "model_year": model_year,
+                    "currency": "TRY",
+                }
+            )
+
+        return records
+
+    def _normalize_model_name(self, value: str) -> str | None:
+        normalized = self._latinize(self._clean_text(value)).upper()
+        if normalized.startswith("DS 7"):
+            return "DS 7"
+        if normalized.startswith("N4") or normalized.startswith("N°4"):
+            return "N°4"
+        if normalized.startswith("DS 4"):
+            return "DS 4"
+        return None
+
+    def _extract_model_year(self, text: str) -> str:
+        match = re.search(r"\b(202[4-7])\b", text)
+        if match:
+            return match.group(1)
+        return "2026"
+
+    @staticmethod
+    def _clean_text(value: str) -> str:
+        return re.sub(r"\s+", " ", value or "").strip()
+
+    @staticmethod
+    def _latinize(value: str) -> str:
+        cleaned = value or ""
+        return (
+            cleaned.replace("Ç", "C")
+            .replace("ç", "c")
+            .replace("Ğ", "G")
+            .replace("ğ", "g")
+            .replace("İ", "I")
+            .replace("ı", "i")
+            .replace("Ö", "O")
+            .replace("ö", "o")
+            .replace("Ş", "S")
+            .replace("ş", "s")
+            .replace("Ü", "U")
+            .replace("ü", "u")
+            .replace("°", "")
+            .replace("É", "E")
+            .replace("é", "e")
+        )

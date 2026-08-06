@@ -1,86 +1,126 @@
 """
-jeep_scraper.py  —  Jeep Türkiye (Tofaş Grubu) Fiyat Scraper'ı
-================================================================
-Birincil : Jeep Türkiye Resmi Fiyat Kataloğu & Model Listeleri
+Jeep Turkiye fiyat scraper'i.
 """
 
 from __future__ import annotations
 
 import re
 from typing import Any
-from bs4 import BeautifulSoup
-from .base_scraper import BaseScraper, fmt_price, http_get
 
-_CLEAN = re.compile(r"\s+")
+from bs4 import BeautifulSoup
+
+from .base_scraper import BaseScraper, ValidationProfile, fmt_price, http_get, parse_price_str
 
 
 class JeepScraper(BaseScraper):
     brand = "Jeep"
+    validation_profile = ValidationProfile(
+        min_records=4,
+        required_models=("Avenger", "Compass"),
+        min_required_models=2,
+        required_variant_keywords=("Hibrit",),
+    )
+
+    SOURCE_URL = "https://arjfiyat.tofas.com.tr/pricelists?brand=jeep&opncl_performance=true&opncl_advertising=true"
 
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("jeep_official_catalog", self._fetch_jeep_catalog),
+            ("jeep_tofas_iframe_live", self._fetch_jeep_tofas_iframe_live),
         ]
 
-    def _fetch_jeep_catalog(self) -> list[dict]:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-        }
+    def _fetch_jeep_tofas_iframe_live(self) -> list[dict]:
+        response = http_get(self.SOURCE_URL)
+        return self._parse_catalog(response.text)
+
+    def _parse_catalog(self, html: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
         records: list[dict] = []
-        seen: set[tuple] = set()
+        seen: set[tuple[str, str, str, int]] = set()
+        current_model = "Jeep"
 
-        official_jeep_catalog = [
-            ("Avenger", "Avenger 1.2 100 hp Altitude Benzinli Manuel", 1545000),
-            ("Avenger", "Avenger e-Hybrid 1.2 100 hp Altitude e-DCS6", 1695000),
-            ("Avenger EV", "Avenger Summit 115 kW Elektrik 4x2", 1795000),
-            ("Renegade", "Renegade 1.5 e-Hybrid 130 hp Longitude DCT", 1785000),
-            ("Renegade", "Renegade 1.5 e-Hybrid 130 hp Limited DCT", 1925000),
-            ("Compass", "Compass 1.5 e-Hybrid 130 hp Limited DCT", 2285000),
-            ("Compass", "Compass 1.5 e-Hybrid 130 hp S-Model DCT", 2545000),
-            ("Compass 4xe", "Compass 4xe Plug-in Hybrid 240 hp 4x4 S-Model", 2985000),
-            ("Wrangler", "Wrangler Rubicon 2.0 272 hp 4x4 Otomatik", 7850000),
-        ]
+        for element in soup.find_all(["h1", "table"]):
+            if element.name == "h1":
+                heading = self._clean_text(element.get_text(" ", strip=True))
+                normalized_model = self._normalize_model_name(heading)
+                if normalized_model:
+                    current_model = normalized_model
+                continue
 
-        try:
-            r = http_get("https://www.jeep.com.tr/fiyat-listesi", headers=headers)
-            soup = BeautifulSoup(r.text, "html.parser")
-            for t in soup.find_all("table"):
-                for tr in t.find_all("tr"):
-                    cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
-                    if len(cols) >= 2:
-                        m_name = cols[0]
-                        v_name = cols[1] if len(cols) > 2 else cols[0]
-                        price_text = cols[-1]
-                        m = re.search(r"(\d[\d.,\s]+)", price_text)
-                        if m:
-                            p_int = int(re.sub(r"[^\d]", "", m.group(1)))
-                            if 100_000 < p_int < 10_000_000:
-                                key = (m_name, v_name, p_int)
-                                if key not in seen:
-                                    seen.add(key)
-                                    records.append({
-                                        "model_name": m_name,
-                                        "variant": v_name,
-                                        "price_raw": fmt_price(p_int),
-                                        "price_int": p_int,
-                                        "currency": "TRY"
-                                    })
-        except Exception:
-            pass
+            table = element
+            rows = table.find_all("tr")
+            if not rows:
+                continue
 
-        if not records:
-            for item in official_jeep_catalog:
-                m_name, v_name, p_int = item[0], item[1], item[2]
-                key = (m_name, v_name, p_int)
-                if key not in seen:
-                    seen.add(key)
-                    records.append({
-                        "model_name": m_name,
-                        "variant": v_name,
-                        "price_raw": fmt_price(p_int),
-                        "price_int": p_int,
-                        "currency": "TRY"
-                    })
+            table_text = self._clean_text(table.get_text(" ", strip=True)).upper()
+            if "TAVSIYE EDILEN ANAHTAR TESLIM FIYATI" not in table_text and "TAVSİYE EDİLEN ANAHTAR TESLİM FİYATI" not in table_text:
+                continue
+
+            for tr in rows[1:]:
+                cols = [self._clean_text(cell.get_text(" ", strip=True)) for cell in tr.find_all(["th", "td"])]
+                if len(cols) < 6:
+                    continue
+
+                raw_model = cols[0]
+                if raw_model.upper() == "MODEL":
+                    continue
+
+                variant_name = self._build_variant_name(raw_model, cols[1], cols[2], cols[3], cols[4])
+                price_int = parse_price_str(cols[5])
+                if not price_int:
+                    continue
+
+                model_name = self._normalize_model_name(raw_model) or current_model
+                model_year = "2026"
+
+                key = (model_name, variant_name, model_year, price_int)
+                if key in seen:
+                    continue
+
+                seen.add(key)
+                records.append(
+                    {
+                        "model_name": model_name,
+                        "variant": variant_name,
+                        "price_raw": fmt_price(price_int),
+                        "price_int": price_int,
+                        "list_price_int": price_int,
+                        "campaign_price_int": price_int,
+                        "discount_amount_int": 0,
+                        "discount_pct": 0.0,
+                        "model_year": model_year,
+                        "currency": "TRY",
+                    }
+                )
 
         return records
+
+    def _normalize_model_name(self, value: str) -> str | None:
+        upper_value = self._clean_text(value).upper()
+        if "AVENGER" in upper_value:
+            return "Avenger"
+        if "COMPASS" in upper_value:
+            return "Compass"
+        if "RENEGADE" in upper_value:
+            return "Renegade"
+        if "WRANGLER" in upper_value:
+            return "Wrangler"
+        if "CHEROKEE" in upper_value:
+            return "Grand Cherokee"
+        return None
+
+    def _build_variant_name(self, model: str, cekis: str, donanim: str, sanziman: str, yakit: str) -> str:
+        parts = [
+            self._clean_text(model),
+            self._clean_text(cekis),
+            self._clean_text(donanim),
+            self._clean_text(sanziman),
+            self._clean_text(yakit),
+        ]
+        return " ".join(part for part in parts if part).strip()
+
+    @staticmethod
+    def _clean_text(value: str) -> str:
+        cleaned = re.sub(r"\s+", " ", value or "").strip()
+        cleaned = cleaned.replace("SUMMİT", "SUMMIT").replace("ELEKTRİKLİ", "ELEKTRIKLI")
+        return cleaned

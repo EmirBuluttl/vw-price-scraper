@@ -1,138 +1,101 @@
 """
-renault_scraper.py  —  Renault Türkiye fiyat scraper'ı
-======================================================
-Birincil : Tüm Renault Model İniş Sayfaları (tavsiye edilen kampanya fiyatı extraction)
-Fallback : Ana sayfa APP_STATE
+Renault Turkiye fiyat scraper.
 """
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
-from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-from .base_scraper import BaseScraper, fmt_price, http_get
+from .base_scraper import BaseScraper, ValidationProfile, fmt_price, parse_price_str
 
 
 class RenaultScraper(BaseScraper):
     brand = "Renault"
+    validation_profile = ValidationProfile(
+        min_records=8,
+        required_models=("Yeni Clio", "Captur", "Austral"),
+        min_required_models=3,
+    )
+
+    SOURCE_URL = "https://best.renault.com.tr/fiyat-listesi/?kat=Binek"
 
     @property
     def methods(self) -> list[tuple[str, Any]]:
-        return [
-            ("all_model_landing_pages", self._fetch_all_model_pages),
-        ]
+        return [("renault_best_live", self._fetch_renault_best_live)]
 
-    def _fetch_all_model_pages(self) -> list[dict]:
-        """Tüm Renault model sayfalarını gezerek her donanım paketinin tavsiye edilen kampanya fiyatını çek."""
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/126.0.0.0 Safari/537.36"
-            )
-        }
+    def _fetch_renault_best_live(self) -> list[dict]:
+        html = self.fetch_page_html(self.SOURCE_URL, post_load_wait_ms=4000)
+        return self._parse_catalog(html)
+
+    def _parse_catalog(self, html: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
         records: list[dict] = []
-        seen: set[tuple] = set()
-        model_urls = set()
+        seen: set[tuple[str, str, str, int]] = set()
 
-        # Ana sayfadan tüm aktif model linklerini dinamik olarak topla (Kategori indeks sayfalarını değil, sadece tekil model sayfalarını al)
-        try:
-            r_main = http_get("https://www.renault.com.tr", headers=headers)
-            soup_main = BeautifulSoup(r_main.text, "html.parser")
-            for a in soup_main.find_all("a", href=True):
-                href = a.get("href")
-                if any(cat in href for cat in ["/binek-araclar/", "/hybrid-araclar/", "/elektrikli-araclar/", "/ticari-araclar/"]) and href.endswith(".html"):
-                    if "konfigurator" not in href and "fiyat" not in href:
-                        full_url = urljoin("https://www.renault.com.tr", href)
-                        model_urls.add(full_url)
-        except Exception:
-            pass
+        for table in soup.select("table.price-table"):
+            row_container = table.find_parent(class_="row")
+            model_name = self._extract_model_name(row_container, table)
+            if not model_name:
+                continue
 
-        if not model_urls:
-            model_urls = {
-                "https://www.renault.com.tr/hybrid-araclar/yeni-clio.html",
-                "https://www.renault.com.tr/binek-araclar/megane-sedan.html",
-                "https://www.renault.com.tr/elektrikli-araclar/megane-e-tech-elektrikli.html",
-                "https://www.renault.com.tr/elektrikli-araclar/scenic-e-tech-elektrikli.html",
-                "https://www.renault.com.tr/hybrid-araclar/rafale.html",
-            }
+            headers = [
+                self._clean_text(cell.get_text(" ", strip=True))
+                for cell in table.select("thead th")
+            ]
+            year_match = re.search(r"\b(202[4-7])\b", " ".join(headers))
+            model_year = year_match.group(1) if year_match else "2026"
 
-        for url in sorted(model_urls):
-            try:
-                r = http_get(url, headers=headers)
-                match = re.search(r'window\.APP_STATE\s*=\s*JSON\.parse\("(.*?)"\);', r.text, re.DOTALL)
-                if not match:
+            for tr in table.select("tbody tr"):
+                cols = [self._clean_text(cell.get_text(" ", strip=True)) for cell in tr.find_all(["th", "td"])]
+                if len(cols) < 2:
                     continue
-                data = json.loads(json.loads(f'"{match.group(1)}"'))
-                model_name = url.split("/")[-1].replace(".html", "").replace("-", " ").title()
 
-                # Model parametrelerinden donanımlar (grades) & versiyonlar
-                model_params = data.get("page", {}).get("data", {}).get("modelParams", {}).get("data", {})
-                grades = model_params.get("grades", [])
+                variant_name = cols[0]
+                if not variant_name or variant_name.lower() == "opsiyonlar":
+                    continue
 
-                if grades:
-                    for g in grades:
-                        pv = g.get("pricedVersion") or {}
-                        v_label = pv.get("label") or g.get("label") or g.get("code")
+                price_int = parse_price_str(cols[1])
+                if not price_int:
+                    continue
 
-                        # Öncelikle tavsiye edilen kampanya fiyatını (priceWoOptionsWoVAT / price / minPrice) al!
-                        fin = g.get("finance") or {}
-                        p_val = fin.get("priceWoOptionsWoVAT") or fin.get("priceWoOptions") or fin.get("price") or g.get("minPrice")
-                        
-                        if not p_val:
-                            p_val = (g.get("webDisplayPrices") or {}).get("displayPrice")
+                key = (model_name, variant_name, model_year, price_int)
+                if key in seen:
+                    continue
 
-                        if v_label and p_val:
-                            try:
-                                p_int = int(float(str(p_val)))
-                                if 100_000 < p_int < 10_000_000:
-                                    key = (model_name, v_label, p_int)
-                                    if key not in seen:
-                                        seen.add(key)
-                                        records.append({
-                                            "model_name": model_name,
-                                            "variant": v_label,
-                                            "price_raw": fmt_price(p_int),
-                                            "price_int": p_int,
-                                            "currency": "TRY"
-                                        })
-                            except Exception:
-                                pass
-                else:
-                    def extract_fallback(d):
-                        if isinstance(d, dict):
-                            pv = d.get("pricedVersion") or {}
-                            v_label = pv.get("label") or pv.get("name") or d.get("versionName") or d.get("trimName")
-                            fin = d.get("finance") or {}
-                            p_val = fin.get("priceWoOptionsWoVAT") or fin.get("priceWoOptions") or fin.get("price") or d.get("minPrice") or (d.get("webDisplayPrices") or {}).get("displayPrice")
-                            if v_label and p_val:
-                                try:
-                                    p_int = int(float(str(p_val)))
-                                    if 100_000 < p_int < 10_000_000:
-                                        key = (model_name, v_label, p_int)
-                                        if key not in seen:
-                                            seen.add(key)
-                                            records.append({
-                                                "model_name": model_name,
-                                                "variant": v_label,
-                                                "price_raw": fmt_price(p_int),
-                                                "price_int": p_int,
-                                                "currency": "TRY"
-                                            })
-                                except Exception:
-                                    pass
-                            for v in d.values():
-                                extract_fallback(v)
-                        elif isinstance(d, list):
-                            for item in d:
-                                extract_fallback(item)
-
-                    extract_fallback(data)
-            except Exception:
-                pass
+                seen.add(key)
+                records.append(
+                    {
+                        "model_name": model_name,
+                        "variant": variant_name,
+                        "price_raw": fmt_price(price_int),
+                        "price_int": price_int,
+                        "list_price_int": price_int,
+                        "campaign_price_int": price_int,
+                        "discount_amount_int": 0,
+                        "discount_pct": 0.0,
+                        "model_year": model_year,
+                        "currency": "TRY",
+                    }
+                )
 
         return records
+
+    def _extract_model_name(self, row_container, table) -> str | None:
+        if row_container:
+            image = row_container.find("img")
+            if image:
+                alt = self._clean_text(image.get("alt", ""))
+                if alt:
+                    return alt
+
+        heading = table.find_previous(["h1", "h2", "h3"])
+        if heading:
+            return self._clean_text(heading.get_text(" ", strip=True))
+        return None
+
+    @staticmethod
+    def _clean_text(value: str) -> str:
+        return re.sub(r"\s+", " ", value or "").strip()
