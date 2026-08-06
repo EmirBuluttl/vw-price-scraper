@@ -350,7 +350,7 @@ def save_records(conn: sqlite3.Connection, brand: str, records: list[dict], sour
             (variant_id, price_raw, price_int, list_price_int, campaign_price_int, discount_amount_int,
              currency, scraped_at, scraped_date, is_latest, is_active, is_new_model, is_new_variant,
              previous_price_int, price_diff, price_change_pct, source)
-            VALUES (?,?,?,?,?,?,?,?,?,1,1,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,1,1,?,?,?,?,?,?)
             """,
             (
                 variant_id,

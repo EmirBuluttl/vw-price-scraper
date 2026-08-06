@@ -13,6 +13,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 .codex_pydeps/
+.venv_codex/
 
 # IDE ve editor ayarlari
 .vscode/
