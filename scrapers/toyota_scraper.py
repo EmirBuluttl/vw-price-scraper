@@ -9,106 +9,114 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
-from .base_scraper import BaseScraper, ValidationProfile, fmt_price
+from .base_scraper import BaseScraper, ValidationProfile, fmt_price, parse_price_str
 
 
 class ToyotaScraper(BaseScraper):
     brand = "Toyota"
     validation_profile = ValidationProfile(
-        min_records=6,
-        required_models=("Corolla", "C-HR", "Yaris"),
-        min_required_models=2,
+        min_records=10,
+        required_models=("Corolla", "Corolla Hybrid", "Corolla Cross Hybrid", "C-HR Hybrid", "Yaris"),
+        min_required_models=4,
     )
+
+    SOURCE_URL = "https://turkiye.toyota.com.tr/middle/fiyat-listesi/"
 
     @property
     def methods(self) -> list[tuple[str, Any]]:
-        return [("toyota_playwright_live", self._fetch_toyota_playwright_live)]
+        return [("toyota_official_catalog", self._fetch_toyota_official_catalog)]
 
-    def _fetch_toyota_playwright_live(self) -> list[dict]:
+    def _fetch_toyota_official_catalog(self) -> list[dict]:
+        html = self.fetch_page_html(self.SOURCE_URL, post_load_wait_ms=4000)
+        return self._parse_catalog(html)
+
+    def _parse_catalog(self, html: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
         records: list[dict] = []
-        seen: set[tuple] = set()
-        url = "https://turkiye.toyota.com.tr/middle/fiyatl_aksesuar.html"
+        seen: set[tuple[str, str, str, int]] = set()
 
-        try:
-            html = self.fetch_page_html(url, post_load_wait_ms=3000)
-            soup = BeautifulSoup(html, "html.parser")
-            current_model = "Toyota"
+        for table in soup.find_all("table"):
+            rows = table.find_all("tr")
+            if len(rows) < 2:
+                continue
 
-            for table in soup.find_all("table"):
-                table_text = table.get_text(" ", strip=True)
-                match = re.search(r"(Corolla|C-HR|Yaris|RAV4|Hilux|Proace|Camry|Land Cruiser)", table_text, re.IGNORECASE)
-                if match:
-                    current_model = match.group(1)
+            header_text = self._clean_text(rows[0].get_text(" ", strip=True))
+            normalized_header = self._latinize(header_text).upper()
+            if "VERSIYON" not in normalized_header:
+                continue
+            if "OTV MUAFIYETLI" in normalized_header:
+                continue
 
-                for tr in table.find_all("tr"):
-                    cols = [c.get_text(" ", strip=True) for c in tr.find_all(["th", "td"])]
-                    if len(cols) < 2:
-                        continue
+            model_name = self._extract_model_name(table)
+            if not model_name:
+                continue
 
-                    variant_raw = cols[0]
-                    if any(token in variant_raw.upper() for token in ["MODEL", "DONANIM"]):
-                        continue
+            for tr in rows[1:]:
+                cols = [self._clean_text(cell.get_text(" ", strip=True)) for cell in tr.find_all(["th", "td"])]
+                if len(cols) < 2:
+                    continue
 
-                    prices_found = []
-                    for col_val in cols[1:]:
-                        pm = re.search(r"(\d[\d.,\s]+)", col_val)
-                        if not pm:
-                            continue
-                        p_val = int(re.sub(r"[^\d]", "", pm.group(1)))
-                        if 100_000 < p_val < 10_000_000:
-                            prices_found.append(p_val)
+                variant_name = cols[0]
+                if not variant_name or variant_name.startswith("%") or "RENK FARK" in self._latinize(variant_name).upper():
+                    continue
 
-                    if not prices_found:
-                        continue
+                list_price_int = parse_price_str(cols[1]) if len(cols) >= 2 else 0
+                campaign_price_int = parse_price_str(cols[2]) if len(cols) >= 3 else 0
 
-                    if len(prices_found) >= 2:
-                        list_price, camp_price = prices_found[0], prices_found[1]
-                    else:
-                        list_price = camp_price = prices_found[0]
+                if not list_price_int:
+                    continue
+                if not campaign_price_int:
+                    campaign_price_int = list_price_int
 
-                    year_match = re.search(r"\b(202[4-7])\b", f"{variant_raw} {table_text}")
-                    year_val = year_match.group(1) if year_match else "2026"
+                model_year = "2026"
+                key = (model_name, variant_name, model_year, campaign_price_int)
+                if key in seen:
+                    continue
 
-                    model_name = current_model
-                    if "COROLLA CROSS" in variant_raw.upper():
-                        model_name = "Corolla Cross"
-                    elif "COROLLA HB" in variant_raw.upper():
-                        model_name = "Corolla Hatchback"
-                    elif "COROLLA" in variant_raw.upper():
-                        model_name = "Corolla"
-                    elif "C-HR" in variant_raw.upper():
-                        model_name = "C-HR"
-                    elif "YARIS CROSS" in variant_raw.upper():
-                        model_name = "Yaris Cross"
-                    elif "YARIS" in variant_raw.upper():
-                        model_name = "Yaris"
-                    elif "RAV4" in variant_raw.upper():
-                        model_name = "RAV4"
-                    elif "HILUX" in variant_raw.upper():
-                        model_name = "Hilux"
-
-                    key = (model_name, variant_raw, year_val, camp_price)
-                    if key in seen:
-                        continue
-
-                    seen.add(key)
-                    disc = max(0, list_price - camp_price)
-                    disc_pct = round((disc / list_price) * 100, 1) if list_price > 0 else 0.0
-                    records.append(
-                        {
-                            "model_name": model_name,
-                            "variant": variant_raw,
-                            "price_raw": fmt_price(camp_price),
-                            "price_int": camp_price,
-                            "list_price_int": list_price,
-                            "campaign_price_int": camp_price,
-                            "discount_amount_int": disc,
-                            "discount_pct": disc_pct,
-                            "model_year": year_val,
-                            "currency": "TRY",
-                        }
-                    )
-        except Exception as exc:
-            print(f"Playwright Toyota Live Scrape Error: {exc}")
+                seen.add(key)
+                discount_amount = max(0, list_price_int - campaign_price_int)
+                discount_pct = round((discount_amount / list_price_int) * 100, 1) if list_price_int > 0 else 0.0
+                records.append(
+                    {
+                        "model_name": model_name,
+                        "variant": variant_name,
+                        "price_raw": fmt_price(campaign_price_int),
+                        "price_int": campaign_price_int,
+                        "list_price_int": list_price_int,
+                        "campaign_price_int": campaign_price_int,
+                        "discount_amount_int": discount_amount,
+                        "discount_pct": discount_pct,
+                        "model_year": model_year,
+                        "currency": "TRY",
+                    }
+                )
 
         return records
+
+    def _extract_model_name(self, table) -> str | None:
+        heading = table.find_previous(["h1", "h2", "h3", "h4", "strong"])
+        if heading:
+            return self._clean_text(heading.get_text(" ", strip=True))
+        return None
+
+    @staticmethod
+    def _clean_text(value: str) -> str:
+        return re.sub(r"\s+", " ", value or "").strip()
+
+    @staticmethod
+    def _latinize(value: str) -> str:
+        return (
+            (value or "")
+            .replace("Ç", "C")
+            .replace("ç", "c")
+            .replace("Ğ", "G")
+            .replace("ğ", "g")
+            .replace("İ", "I")
+            .replace("ı", "i")
+            .replace("Ö", "O")
+            .replace("ö", "o")
+            .replace("Ş", "S")
+            .replace("ş", "s")
+            .replace("Ü", "U")
+            .replace("ü", "u")
+        )
