@@ -78,6 +78,8 @@ ALL_SCRAPERS = [
     MaseratiScraper(),
 ]
 
+ALL_SCRAPERS = [scraper for scraper in ALL_SCRAPERS if scraper.brand != "Maserati"]
+
 SCRAPER_MAP = {s.brand.lower(): s for s in ALL_SCRAPERS}
 SCRAPE_STATUS = {"running": False, "message": "Bosta", "progress": 0, "last_run": None}
 SCRAPE_LOCK = threading.Lock()
@@ -91,6 +93,8 @@ OEM_GROUPS = {
         "Volkswagen", "Skoda", "Renault", "Ford", "Hyundai", "Toyota", "Kia", "Chery", "Dacia"
     ],
 }
+
+OEM_GROUPS["tofas"] = [brand for brand in OEM_GROUPS["tofas"] if brand != "Maserati"]
 
 
 def get_db() -> sqlite3.Connection:
