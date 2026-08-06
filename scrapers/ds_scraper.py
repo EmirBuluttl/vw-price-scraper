@@ -1,116 +1,130 @@
 """
-ds_scraper.py  —  DS Automobiles Türkiye Fiyat Scraper'ı (Playwright Canlı Chrome Otomasyonu)
-=============================================================================================
-Birincil : Playwright ile https://www.dsautomobiles.com.tr/fiyat-listesi.html Canlı Sayfa Taraması
+DS Automobiles Turkiye fiyat scraper'i.
 """
 
 from __future__ import annotations
 
 import re
 from typing import Any
+
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
-from .base_scraper import BaseScraper, fmt_price
+
+from .base_scraper import BaseScraper, ValidationProfile, fmt_price, http_get, parse_price_str
 
 
 class DSScraper(BaseScraper):
     brand = "DS Automobiles"
+    validation_profile = ValidationProfile(
+        min_records=2,
+        required_models=("DS 7", "N°4"),
+        min_required_models=2,
+        required_variant_keywords=("BlueHDi",),
+    )
+
+    MODEL_URLS = {
+        "DS 7": "https://talep.dsautomobiles.com.tr/fiyat-listesi-ds7.html",
+        "N°4": "https://talep.dsautomobiles.com.tr/fiyat-listesi-n4.html",
+    }
 
     @property
     def methods(self) -> list[tuple[str, Any]]:
         return [
-            ("ds_playwright_live", self._fetch_ds_playwright_live),
+            ("ds_official_catalog", self._fetch_ds_official_catalog),
         ]
 
-    def _fetch_ds_playwright_live(self) -> list[dict]:
+    def _fetch_ds_official_catalog(self) -> list[dict]:
         records: list[dict] = []
-        seen: set[tuple] = set()
+        seen: set[tuple[str, str, str, int]] = set()
 
-        url = "https://www.dsautomobiles.com.tr/fiyat-listesi.html"
-
-        try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+        for model_name, url in self.MODEL_URLS.items():
+            response = http_get(url)
+            html = response.content.decode("utf-8", errors="replace")
+            page_records = self._parse_model_page(model_name, html)
+            for record in page_records:
+                key = (
+                    record["model_name"],
+                    record["variant"],
+                    record["model_year"],
+                    record["price_int"],
                 )
-                page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                page.wait_for_timeout(3000)
-
-                # Tıklanabilir model sekmelerine tıkla
-                clickable = page.locator("button, a").all()
-                for c in clickable:
-                    try:
-                        txt = c.inner_text().strip()
-                        if any(m in txt for m in ["DS 3", "DS 4", "DS 7", "DS 9", "Fiyat"]):
-                            c.click(force=True)
-                            page.wait_for_timeout(500)
-                    except Exception:
-                        pass
-
-                soup = BeautifulSoup(page.content(), "html.parser")
-                browser.close()
-
-                current_model = "DS Automobiles"
-
-                for table in soup.find_all("table"):
-                    table_text = table.get_text()
-                    m_search = re.search(r"(DS 3|DS 4|DS 7|DS 9)", table_text, re.IGNORECASE)
-                    if m_search:
-                        current_model = m_search.group(1)
-
-                    for tr in table.find_all("tr"):
-                        cols = [c.get_text(strip=True) for c in tr.find_all(["th", "td"])]
-                        if len(cols) >= 2:
-                            variant_raw = cols[0]
-                            if "MODEL" in variant_raw.upper() or "DONANIM" in variant_raw.upper():
-                                continue
-
-                            prices_found = []
-                            for col_val in cols[1:]:
-                                pm = re.search(r"(\d[\d.,\s]+)", col_val)
-                                if pm:
-                                    p_val = int(re.sub(r"[^\d]", "", pm.group(1)))
-                                    if 100_000 < p_val < 15_000_000:
-                                        prices_found.append(p_val)
-
-                            if len(prices_found) >= 2:
-                                list_price = prices_found[0]
-                                camp_price = prices_found[1]
-                            elif len(prices_found) == 1:
-                                list_price = prices_found[0]
-                                camp_price = prices_found[0]
-                            else:
-                                continue
-
-                            year_m = re.search(r"\b(202[4-7])\b", f"{variant_raw} {table_text}")
-                            year_val = year_m.group(1) if year_m else "2026"
-
-                            model_name = current_model
-                            if "DS 3" in variant_raw.upper(): model_name = "DS 3"
-                            elif "DS 4" in variant_raw.upper(): model_name = "DS 4"
-                            elif "DS 7" in variant_raw.upper(): model_name = "DS 7"
-                            elif "DS 9" in variant_raw.upper(): model_name = "DS 9"
-
-                            key = (model_name, variant_raw, year_val, camp_price)
-                            if key not in seen:
-                                seen.add(key)
-                                disc = max(0, list_price - camp_price)
-                                disc_pct = round((disc / list_price) * 100, 1) if list_price > 0 else 0.0
-
-                                records.append({
-                                    "model_name": model_name,
-                                    "variant": variant_raw,
-                                    "price_raw": fmt_price(camp_price),
-                                    "price_int": camp_price,
-                                    "list_price_int": list_price,
-                                    "campaign_price_int": camp_price,
-                                    "discount_amount_int": disc,
-                                    "discount_pct": disc_pct,
-                                    "model_year": year_val,
-                                    "currency": "TRY"
-                                })
-        except Exception as e:
-            print(f"Playwright DS Live Scrape Error: {e}")
+                if key in seen:
+                    continue
+                seen.add(key)
+                records.append(record)
 
         return records
+
+    def _parse_model_page(self, model_name: str, html: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        records: list[dict] = []
+
+        for li in soup.find_all("li"):
+            em_values = [self._clean_text(em.get_text(" ", strip=True)) for em in li.find_all("em")]
+            if len(em_values) < 2:
+                continue
+
+            variant_name = em_values[0]
+            price_int = parse_price_str(em_values[1])
+            if not variant_name or not price_int:
+                continue
+
+            normalized_model = self._normalize_model_name(variant_name) or model_name
+            model_year = self._extract_model_year(li.get_text(" ", strip=True))
+
+            records.append(
+                {
+                    "model_name": normalized_model,
+                    "variant": variant_name,
+                    "price_raw": fmt_price(price_int),
+                    "price_int": price_int,
+                    "list_price_int": price_int,
+                    "campaign_price_int": price_int,
+                    "discount_amount_int": 0,
+                    "discount_pct": 0.0,
+                    "model_year": model_year,
+                    "currency": "TRY",
+                }
+            )
+
+        return records
+
+    def _normalize_model_name(self, value: str) -> str | None:
+        normalized = self._latinize(self._clean_text(value)).upper()
+        if normalized.startswith("DS 7"):
+            return "DS 7"
+        if normalized.startswith("N4") or normalized.startswith("N°4"):
+            return "N°4"
+        if normalized.startswith("DS 4"):
+            return "DS 4"
+        return None
+
+    def _extract_model_year(self, text: str) -> str:
+        match = re.search(r"\b(202[4-7])\b", text)
+        if match:
+            return match.group(1)
+        return "2026"
+
+    @staticmethod
+    def _clean_text(value: str) -> str:
+        return re.sub(r"\s+", " ", value or "").strip()
+
+    @staticmethod
+    def _latinize(value: str) -> str:
+        cleaned = value or ""
+        return (
+            cleaned.replace("Ç", "C")
+            .replace("ç", "c")
+            .replace("Ğ", "G")
+            .replace("ğ", "g")
+            .replace("İ", "I")
+            .replace("ı", "i")
+            .replace("Ö", "O")
+            .replace("ö", "o")
+            .replace("Ş", "S")
+            .replace("ş", "s")
+            .replace("Ü", "U")
+            .replace("ü", "u")
+            .replace("°", "")
+            .replace("É", "E")
+            .replace("é", "e")
+        )
