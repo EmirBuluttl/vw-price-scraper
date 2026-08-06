@@ -278,6 +278,8 @@ def save_records(conn: sqlite3.Connection, brand: str, records: list[dict], sour
         cur.execute("INSERT INTO brands (name, created_at) VALUES (?, ?)", (brand, now))
         brand_id = cur.lastrowid
 
+    seen_variant_ids: set[int] = set()
+
     for record in records:
         model_name = record.get("model_name", brand)
         variant_name = record.get("variant", "Standart")
@@ -310,6 +312,8 @@ def save_records(conn: sqlite3.Connection, brand: str, records: list[dict], sour
             )
             variant_id = cur.lastrowid
             is_new_variant = 1
+
+        seen_variant_ids.add(int(variant_id))
 
         cur.execute("SELECT price_int FROM prices WHERE variant_id = ? AND is_latest = 1", (variant_id,))
         prow = cur.fetchone()
@@ -355,6 +359,25 @@ def save_records(conn: sqlite3.Connection, brand: str, records: list[dict], sour
             ),
         )
         inserted += 1
+
+    if seen_variant_ids:
+        placeholders = ",".join("?" for _ in seen_variant_ids)
+        cur.execute(
+            f"""
+            UPDATE prices
+            SET is_latest = 0,
+                is_active = 0
+            WHERE is_latest = 1
+              AND variant_id IN (
+                  SELECT v.id
+                  FROM variants v
+                  JOIN models m ON v.model_id = m.id
+                  WHERE m.brand_id = ?
+              )
+              AND variant_id NOT IN ({placeholders})
+            """,
+            (brand_id, *sorted(seen_variant_ids)),
+        )
 
     conn.commit()
     return inserted
